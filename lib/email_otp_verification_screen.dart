@@ -1,0 +1,526 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'app_theme.dart';
+import 'otp_service.dart';
+import 'loan_application_submitted_screen.dart';
+
+class EmailOtpVerificationScreen extends StatefulWidget {
+  const EmailOtpVerificationScreen({super.key});
+
+  @override
+  State<EmailOtpVerificationScreen> createState() =>
+      _EmailOtpVerificationScreenState();
+}
+
+class _EmailOtpVerificationScreenState
+    extends State<EmailOtpVerificationScreen> {
+  final List<TextEditingController> _otpControllers = List.generate(
+    6,
+    (index) => TextEditingController(),
+  );
+  final List<FocusNode> _focusNodes = List.generate(6, (index) => FocusNode());
+  final OtpService _otpService = OtpService();
+
+  int _remainingSeconds = OtpService.resendTimeoutSeconds;
+  bool _canResend = false;
+  bool _isVerifying = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _startResendTimer();
+  }
+
+  @override
+  void dispose() {
+    for (var controller in _otpControllers) {
+      controller.dispose();
+    }
+    for (var node in _focusNodes) {
+      node.dispose();
+    }
+    super.dispose();
+  }
+
+  void _startResendTimer() {
+    setState(() {
+      _remainingSeconds = OtpService.resendTimeoutSeconds;
+      _canResend = false;
+    });
+
+    Future.doWhile(() async {
+      await Future.delayed(const Duration(seconds: 1));
+      if (!mounted) return false;
+      setState(() {
+        _remainingSeconds--;
+      });
+      if (_remainingSeconds <= 0) {
+        setState(() {
+          _canResend = true;
+        });
+        return false;
+      }
+      return true;
+    });
+  }
+
+  void _onOtpChanged(int index, String value) {
+    if (value.isNotEmpty && index < 5) {
+      _focusNodes[index + 1].requestFocus();
+    } else if (value.isEmpty && index > 0) {
+      _focusNodes[index - 1].requestFocus();
+    }
+
+    if (_isOtpComplete()) {
+      _focusNodes[index].unfocus();
+    }
+  }
+
+  bool _isOtpComplete() {
+    return _otpControllers.every((controller) => controller.text.isNotEmpty);
+  }
+
+  String _getOtpValue() {
+    return _otpControllers.map((controller) => controller.text).join();
+  }
+
+  void _clearOtp({bool requestFocus = true}) {
+    for (var controller in _otpControllers) {
+      controller.clear();
+    }
+    if (requestFocus) {
+      _focusNodes[0].requestFocus();
+    }
+  }
+
+  void _handleResend() async {
+    if (!_canResend) return;
+
+    await _otpService.generateOtp();
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'A new verification code has been sent to your registered email.',
+          ),
+          backgroundColor: AppTheme.primaryGreen,
+        ),
+      );
+      _startResendTimer();
+    }
+  }
+
+  void _handleVerify() async {
+    if (!_isOtpComplete() || _isVerifying) return;
+
+    setState(() {
+      _isVerifying = true;
+    });
+
+    final otp = _getOtpValue();
+    final isValid = await _otpService.verifyOtp(otp);
+
+    if (mounted) {
+      setState(() {
+        _isVerifying = false;
+      });
+
+      if (isValid) {
+        _clearOtp(requestFocus: false);
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const LoanApplicationSubmittedScreen(),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Invalid verification code. Please try again.'),
+            backgroundColor: Color(0xFFD9534F),
+          ),
+        );
+        _clearOtp();
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF3F5F4),
+      appBar: _buildAppBar(),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.all(AppTheme.spacingL),
+          child: Column(
+            children: [
+              const LoanProgressIndicator(currentStep: 2),
+              const SizedBox(height: AppTheme.spacingXL),
+              const VerificationHeader(),
+              const SizedBox(height: AppTheme.spacingXL),
+              OtpInputFields(
+                controllers: _otpControllers,
+                focusNodes: _focusNodes,
+                onChanged: _onOtpChanged,
+              ),
+              const SizedBox(height: AppTheme.spacingL),
+              OtpTimer(
+                remainingSeconds: _remainingSeconds,
+                canResend: _canResend,
+                onResend: _handleResend,
+              ),
+              const SizedBox(height: AppTheme.spacingXL),
+              PrimaryButton(
+                isEnabled: _isOtpComplete() && !_isVerifying,
+                onPressed: _handleVerify,
+                isLoading: _isVerifying,
+              ),
+              const SizedBox(height: AppTheme.spacingM),
+              const Text(
+                'For your security, never share your OTP with anyone.',
+                style: TextStyle(
+                  color: Color(0xFF7D8A82),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w400,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: AppTheme.spacingXL),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  PreferredSizeWidget _buildAppBar() {
+    return AppBar(
+      backgroundColor: AppTheme.cardWhite,
+      elevation: 0,
+      leading: IconButton(
+        icon: const Icon(
+          Icons.arrow_back_ios_new,
+          color: AppTheme.mutedGray,
+          size: 20,
+        ),
+        onPressed: () => Navigator.of(context).pop(),
+      ),
+      title: const Text(
+        'Verify Application',
+        style: TextStyle(
+          color: Color(0xFF183A24),
+          fontSize: 18,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      centerTitle: true,
+    );
+  }
+}
+
+class LoanProgressIndicator extends StatelessWidget {
+  final int currentStep;
+
+  const LoanProgressIndicator({super.key, required this.currentStep});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        _buildStep('Loan Details', 0, currentStep),
+        Expanded(
+          child: Container(
+            height: 2,
+            color: currentStep >= 0
+                ? AppTheme.primaryGreen
+                : const Color(0xFFE0E0E0),
+          ),
+        ),
+        _buildStep('Documents', 1, currentStep),
+        Expanded(
+          child: Container(
+            height: 2,
+            color: currentStep >= 1
+                ? AppTheme.primaryGreen
+                : const Color(0xFFE0E0E0),
+          ),
+        ),
+        _buildStep('Review', 2, currentStep),
+      ],
+    );
+  }
+
+  Widget _buildStep(String label, int step, int currentStep) {
+    final isActive = step == currentStep;
+    final isCompleted = step < currentStep;
+
+    return Column(
+      children: [
+        Container(
+          width: 24,
+          height: 24,
+          decoration: BoxDecoration(
+            color: isActive || isCompleted
+                ? AppTheme.primaryGreen
+                : const Color(0xFFE0E0E0),
+            shape: BoxShape.circle,
+          ),
+          child: Center(
+            child: isCompleted
+                ? const Icon(Icons.check, color: Colors.white, size: 16)
+                : Text(
+                    '${step + 1}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          label,
+          style: TextStyle(
+            color: isActive || isCompleted
+                ? AppTheme.primaryGreen
+                : const Color(0xFF7D8A82),
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class VerificationHeader extends StatelessWidget {
+  const VerificationHeader({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Container(
+          width: 80,
+          height: 80,
+          decoration: BoxDecoration(
+            color: const Color(0xFFE8F3EC),
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(
+            Icons.mark_email_read_rounded,
+            color: AppTheme.primaryGreen,
+            size: 40,
+          ),
+        ),
+        const SizedBox(height: AppTheme.spacingL),
+        const Text(
+          'Email Verification',
+          style: TextStyle(
+            color: Color(0xFF183A24),
+            fontSize: 24,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: AppTheme.spacingM),
+        const Text(
+          'To protect your account and verify your identity, we\'ve sent a 6-digit verification code to your registered institutional email.',
+          style: TextStyle(
+            color: Color(0xFF7D8A82),
+            fontSize: 14,
+            fontWeight: FontWeight.w400,
+            height: 1.5,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: AppTheme.spacingS),
+        const Text(
+          'm.s****@csucc.edu.ph',
+          style: TextStyle(
+            color: Color(0xFF183A24),
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class OtpInputFields extends StatelessWidget {
+  final List<TextEditingController> controllers;
+  final List<FocusNode> focusNodes;
+  final Function(int, String) onChanged;
+
+  const OtpInputFields({
+    super.key,
+    required this.controllers,
+    required this.focusNodes,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final totalGapWidth =
+            6 * 12.0; // 12px padding per field (6 left + 6 right)
+        final fieldWidth = ((constraints.maxWidth - totalGapWidth) / 6).clamp(
+          40.0,
+          56.0,
+        );
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(
+            6,
+            (index) => Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 6),
+              child: SizedBox(
+                width: fieldWidth,
+                height: 56,
+                child: TextField(
+                  controller: controllers[index],
+                  focusNode: focusNodes[index],
+                  keyboardType: TextInputType.number,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  enableInteractiveSelection: false,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Color(0xFF183A24),
+                    fontSize: 20,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(1),
+                  ],
+                  decoration: InputDecoration(
+                    filled: true,
+                    fillColor: Colors.white,
+                    contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Color(0xFFE6E6E6)),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(
+                        color: AppTheme.primaryGreen,
+                        width: 2,
+                      ),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Color(0xFFE6E6E6)),
+                    ),
+                  ),
+                  onChanged: (value) => onChanged(index, value),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class OtpTimer extends StatelessWidget {
+  final int remainingSeconds;
+  final bool canResend;
+  final VoidCallback onResend;
+
+  const OtpTimer({
+    super.key,
+    required this.remainingSeconds,
+    required this.canResend,
+    required this.onResend,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        const Text(
+          'Didn\'t receive the code?',
+          style: TextStyle(
+            color: Color(0xFF7D8A82),
+            fontSize: 14,
+            fontWeight: FontWeight.w400,
+          ),
+        ),
+        const SizedBox(height: AppTheme.spacingXS),
+        GestureDetector(
+          onTap: canResend ? onResend : null,
+          child: Text(
+            canResend
+                ? 'Resend Code'
+                : 'Resend Code in ${OtpService.formatTime(remainingSeconds)}',
+            style: TextStyle(
+              color: canResend
+                  ? AppTheme.primaryGreen
+                  : const Color(0xFF7D8A82),
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              decoration: canResend
+                  ? TextDecoration.underline
+                  : TextDecoration.none,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class PrimaryButton extends StatelessWidget {
+  final bool isEnabled;
+  final VoidCallback onPressed;
+  final bool isLoading;
+
+  const PrimaryButton({
+    super.key,
+    required this.isEnabled,
+    required this.onPressed,
+    this.isLoading = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      height: 52,
+      child: ElevatedButton(
+        onPressed: isEnabled ? onPressed : null,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: isEnabled
+              ? AppTheme.primaryGreen
+              : const Color(0xFFB8C4B8),
+          foregroundColor: Colors.white,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+        ),
+        child: isLoading
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              )
+            : const Text(
+                'Verify OTP',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+      ),
+    );
+  }
+}
