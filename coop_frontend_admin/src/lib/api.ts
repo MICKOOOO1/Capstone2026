@@ -24,13 +24,18 @@ export interface BackendLoanApplication {
 
 // Transform backend data to frontend format
 function transformToFrontendFormat(backendApp: BackendLoanApplication): LoanApplication {
+  const status = backendApp.status
+    .split(' ')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ') as LoanApplication['status'];
+
   return {
     id: `LA-2025-${String(backendApp.id).padStart(4, '0')}`,
     memberId: backendApp.memberId ?? '',
     member: backendApp.applicantName,
     type: backendApp.purpose || 'Regular',
     amount: `₱${backendApp.amount.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`,
-    status: backendApp.status.charAt(0).toUpperCase() + backendApp.status.slice(1) as LoanApplication['status'],
+    status,
     date: new Date(backendApp.dateSubmitted).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   };
 }
@@ -74,7 +79,7 @@ export async function createLoanApplication(application: Omit<LoanApplication, '
       },
       body: JSON.stringify({
         applicantName: application.member,
-        amount: parseFloat(application.amount.replace('₱', '').replace(',', '')),
+        amount: parseFloat(application.amount.replace(/[₱,]/g, '')),
         purpose: application.type,
         status: application.status.toLowerCase()
       }),

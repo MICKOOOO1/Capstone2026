@@ -1,105 +1,26 @@
 # COOP Backend API
 
-Express.js backend for the COOP application with MySQL database integration.
+Express + MySQL API used by both the member app and the admin website.
 
-## Prerequisites
+## Setup
 
-- Node.js (v14 or higher)
-- MySQL Server (v5.7 or higher)
-- npm or yarn
+1. Copy `.env.example` to `.env` and update the MySQL credentials if needed.
+2. Install dependencies with `npm install`.
+3. Create and seed the database with `npm run init-db`.
+4. Start the API with `npm run dev`.
 
-## Installation
+The API runs at `http://localhost:5000` by default.
 
-1. Install dependencies:
-```bash
-npm install
-```
+## Connection Points
 
-2. Set up MySQL database:
-```bash
-npm run init-db
-```
+- Admin website: `coop_frontend_admin/.env.local` uses `NEXT_PUBLIC_API_URL=http://localhost:5000`.
+- Member app: `coop_frontend/index.html` uses `http://localhost:5000` by default.
+- Database: configured through `DB_*` values in `coop_backend/.env`.
 
-This will create the database and tables with sample data.
+## Endpoints
 
-## Environment Variables
-
-Create a `.env` file in the root directory:
-
-```
-PORT=5000
-NODE_ENV=development
-
-# Database Configuration
-DB_HOST=localhost
-DB_PORT=3306
-DB_USER=root
-DB_PASSWORD=
-DB_NAME=coop_db
-```
-
-Update the database credentials according to your MySQL setup.
-
-## Database Setup
-
-The system uses MySQL with the following tables:
-- `members` - Member information
-- `loan_applications` - Loan application records
-- `loan_payments` - Payment tracking
-- `savings_accounts` - Member savings accounts
-
-### Manual Database Setup
-
-If you prefer to set up the database manually:
-
-1. Create a MySQL database named `coop_db`
-2. Run the SQL schema:
-```bash
-mysql -u root -p coop_db < schema.sql
-```
-
-## Running the Server
-
-Development mode:
-```bash
-npm run dev
-```
-
-Production mode:
-```bash
-npm start
-```
-
-The server will start on port 5000 by default.
-
-## API Endpoints
-
-### Root
-- `GET /` - Welcome message
-
-### Health Check
-- `GET /health` - Server health status
-
-### Loan Applications
-- `GET /api/loan-applications` - Get all loan applications
-- `GET /api/loan-applications/:id` - Get single loan application
-- `POST /api/loan-applications` - Create new loan application
-- `PATCH /api/loan-applications/:id` - Update loan application status
-
-## Project Structure
-
-```
-coop_backend/
-├── index.js                 # Main server file
-├── config/
-│   └── database.js          # MySQL connection configuration
-├── routes/                  # API route handlers
-│   └── loanApplications.js  # Loan application routes
-├── scripts/
-│   └── initDb.js            # Database initialization script
-├── schema.sql               # Database schema definition
-├── .env                     # Environment variables
-├── .gitignore              # Git ignore file
-├── package.json            # Dependencies and scripts
-└── README.md               # This file
-```
+- `GET /health`
+- `GET /api/loan-applications`
+- `GET /api/loan-applications/:id`
+- `POST /api/loan-applications`
+- `PATCH /api/loan-applications/:id`
