@@ -3,7 +3,14 @@ import 'app_theme.dart';
 import 'email_otp_verification_screen.dart';
 
 class ReviewTermsScreen extends StatefulWidget {
-  const ReviewTermsScreen({super.key});
+  final double loanAmount;
+  final String loanType;
+
+  const ReviewTermsScreen({
+    super.key,
+    required this.loanAmount,
+    required this.loanType,
+  });
 
   @override
   State<ReviewTermsScreen> createState() => _ReviewTermsScreenState();
@@ -41,7 +48,8 @@ class _ReviewTermsScreenState extends State<ReviewTermsScreen> {
               ),
               const SizedBox(height: AppTheme.spacingM),
               AgreementCheckbox(
-                label: 'I have read, understood, and agree to the Terms and Conditions.',
+                label:
+                    'I have read, understood, and agree to the Terms and Conditions.',
                 value: _acceptedTerms,
                 onChanged: (value) {
                   setState(() {
@@ -51,7 +59,8 @@ class _ReviewTermsScreenState extends State<ReviewTermsScreen> {
               ),
               const SizedBox(height: AppTheme.spacingM),
               AgreementCheckbox(
-                label: 'I certify that all information provided in this loan application is true and correct.',
+                label:
+                    'I certify that all information provided in this loan application is true and correct.',
                 value: _certifiedInformation,
                 onChanged: (value) {
                   setState(() {
@@ -67,7 +76,10 @@ class _ReviewTermsScreenState extends State<ReviewTermsScreen> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => const EmailOtpVerificationScreen(),
+                            builder: (_) => EmailOtpVerificationScreen(
+                              loanAmount: widget.loanAmount,
+                              loanType: widget.loanType,
+                            ),
                           ),
                         );
                       }
@@ -119,14 +131,18 @@ class LoanProgressIndicator extends StatelessWidget {
         Expanded(
           child: Container(
             height: 2,
-            color: currentStep >= 0 ? AppTheme.primaryGreen : const Color(0xFFE0E0E0),
+            color: currentStep >= 0
+                ? AppTheme.primaryGreen
+                : const Color(0xFFE0E0E0),
           ),
         ),
         _buildStep('Documents', 1, currentStep),
         Expanded(
           child: Container(
             height: 2,
-            color: currentStep >= 1 ? AppTheme.primaryGreen : const Color(0xFFE0E0E0),
+            color: currentStep >= 1
+                ? AppTheme.primaryGreen
+                : const Color(0xFFE0E0E0),
           ),
         ),
         _buildStep('Review', 2, currentStep),
@@ -144,7 +160,9 @@ class LoanProgressIndicator extends StatelessWidget {
           width: 24,
           height: 24,
           decoration: BoxDecoration(
-            color: isActive || isCompleted ? AppTheme.primaryGreen : const Color(0xFFE0E0E0),
+            color: isActive || isCompleted
+                ? AppTheme.primaryGreen
+                : const Color(0xFFE0E0E0),
             shape: BoxShape.circle,
           ),
           child: Center(
@@ -164,7 +182,9 @@ class LoanProgressIndicator extends StatelessWidget {
         Text(
           label,
           style: TextStyle(
-            color: isActive || isCompleted ? AppTheme.primaryGreen : const Color(0xFF7D8A82),
+            color: isActive || isCompleted
+                ? AppTheme.primaryGreen
+                : const Color(0xFF7D8A82),
             fontSize: 11,
             fontWeight: FontWeight.w600,
           ),
@@ -376,11 +396,7 @@ class PrimaryButton extends StatelessWidget {
   final bool isEnabled;
   final VoidCallback? onPressed;
 
-  const PrimaryButton({
-    super.key,
-    required this.isEnabled,
-    this.onPressed,
-  });
+  const PrimaryButton({super.key, required this.isEnabled, this.onPressed});
 
   @override
   Widget build(BuildContext context) {
@@ -401,10 +417,7 @@ class PrimaryButton extends StatelessWidget {
         ),
         child: const Text(
           'Send OTP to Continue',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
       ),
     );

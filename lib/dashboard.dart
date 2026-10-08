@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'bellicon.dart';
 import 'schedtracker.dart';
 import 'drawer_menu.dart';
 import 'app_bottom_navigation_bar.dart';
 import 'application_state.dart';
 import 'loans_screen.dart';
+import '../services/database_service.dart';
 
 class Dashboard extends StatefulWidget {
   const Dashboard({super.key});
@@ -20,6 +22,12 @@ class _DashboardState extends State<Dashboard> {
   final PageController _advertisementController = PageController();
   Timer? _advertisementTimer;
   int _advertisementIndex = 0;
+  final DatabaseService _dbService = DatabaseService();
+
+  Map<String, dynamic>? _userData;
+  Map<String, dynamic>? _loanData;
+  List<Map<String, dynamic>> _recentActivities = [];
+  bool _isLoading = true;
 
   static const List<String> _advertisements = [
     'assets/adevertise1.png',
@@ -30,7 +38,7 @@ class _DashboardState extends State<Dashboard> {
   @override
   void initState() {
     super.initState();
-    _checkPendingApplication();
+    _loadData();
     _advertisementTimer = Timer.periodic(const Duration(seconds: 5), (_) {
       if (!_advertisementController.hasClients) return;
       _advertisementController.animateToPage(
@@ -46,6 +54,48 @@ class _DashboardState extends State<Dashboard> {
     _advertisementTimer?.cancel();
     _advertisementController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadData() async {
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) return;
+
+      final memberData = await _dbService.getMember(user.id);
+      final loanApplications = await _dbService.getLoanApplications(user.id);
+
+      final activeLoan = loanApplications.isNotEmpty
+          ? loanApplications.firstWhere(
+              (loan) => loan['status'] == 'released' || loan['status'] == 'overdue',
+              orElse: () => loanApplications.first,
+            )
+          : null;
+
+      final payments = activeLoan != null
+          ? await _dbService.getLoanPayments(activeLoan['id'])
+          : [];
+
+      if (mounted) {
+        setState(() {
+          _userData = memberData;
+          _loanData = activeLoan;
+          _recentActivities = payments.map((payment) {
+            return {
+              'title': 'Loan Payment',
+              'date': payment['payment_date'],
+              'amount': -payment['payment_amount'],
+            };
+          }).toList();
+          _isLoading = false;
+        });
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   Future<void> _checkPendingApplication() async {
@@ -78,27 +128,6 @@ class _DashboardState extends State<Dashboard> {
   static const double _buttonBorderRadius = 16.0;
   static const double _pillBorderRadius = 999.0;
 
-  // Placeholder data - easily replaceable with backend data
-  final Map<String, dynamic> _userData = {
-    'name': 'Maria Santos',
-    'memberId': 'CSUCC-2019-0042',
-  };
-
-  final Map<String, dynamic> _loanData = {
-    'loanType': 'Regular',
-    'outstandingBalance': 82666.67,
-    'monthlyPayment': 8266.67,
-    'nextDueDate': 'Aug 15, 2025',
-    'progress': 2,
-    'totalMonths': 12,
-  };
-
-  final List<Map<String, dynamic>> _recentActivities = [
-    {'title': 'Loan Payment', 'date': 'Jul 15, 2025', 'amount': -8266.67},
-    {'title': 'Loan Payment', 'date': 'Jun 15, 2025', 'amount': -8266.67},
-    {'title': 'Loan Disbursement', 'date': 'May 20, 2025', 'amount': 75650.00},
-  ];
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -111,29 +140,31 @@ class _DashboardState extends State<Dashboard> {
             _buildHeader(),
             // Scrollable content
             Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Membership Badge
-                    _buildMembershipBadge(),
-                    const SizedBox(height: 16),
-                    // Advertisement carousel
-                    _buildAdvertisementCarousel(),
-                    const SizedBox(height: 16),
-                    // Active Loan Card
-                    _buildActiveLoanCard(),
-                    const SizedBox(height: 16),
-                    // Quick Actions Card
-                    _buildQuickActionsCard(),
-                    const SizedBox(height: 16),
-                    // Recent Activity Card
-                    _buildRecentActivityCard(),
-                    const SizedBox(height: 24),
-                  ],
-                ),
-              ),
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : SingleChildScrollView(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Membership Badge
+                          _buildMembershipBadge(),
+                          const SizedBox(height: 16),
+                          // Advertisement carousel
+                          _buildAdvertisementCarousel(),
+                          const SizedBox(height: 16),
+                          // Active Loan Card
+                          if (_loanData != null) _buildActiveLoanCard(),
+                          if (_loanData != null) const SizedBox(height: 16),
+                          // Quick Actions Card
+                          _buildQuickActionsCard(),
+                          const SizedBox(height: 16),
+                          // Recent Activity Card
+                          _buildRecentActivityCard(),
+                          const SizedBox(height: 24),
+                        ],
+                      ),
+                    ),
             ),
             // Fixed Bottom Navigation
             AppBottomNavigationBar(
@@ -147,6 +178,10 @@ class _DashboardState extends State<Dashboard> {
   }
 
   Widget _buildHeader() {
+    final userName = _userData != null
+        ? '${_userData!['first_name']} ${_userData!['last_name']}'
+        : 'Loading...';
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
       decoration: const BoxDecoration(color: _headerGreen),
@@ -188,7 +223,7 @@ class _DashboardState extends State<Dashboard> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      _userData['name'],
+                      userName,
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 20,
@@ -244,6 +279,9 @@ class _DashboardState extends State<Dashboard> {
   }
 
   Widget _buildMembershipBadge() {
+    final memberId = _userData != null ? _userData!['member_id'] : 'Loading...';
+    final status = _userData != null ? _userData!['status'] : 'loading';
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
@@ -256,15 +294,15 @@ class _DashboardState extends State<Dashboard> {
           Container(
             width: 8,
             height: 8,
-            decoration: const BoxDecoration(
-              color: _accentGold,
+            decoration: BoxDecoration(
+              color: status == 'active' ? _accentGold : Colors.red,
               shape: BoxShape.circle,
             ),
           ),
           const SizedBox(width: 8),
-          const Text(
-            'Active Member',
-            style: TextStyle(
+          Text(
+            status == 'active' ? 'Active Member ($memberId)' : 'Inactive ($memberId)',
+            style: const TextStyle(
               color: Color(0xFFE8D5A7),
               fontSize: 12,
               fontWeight: FontWeight.w600,
@@ -375,6 +413,12 @@ class _DashboardState extends State<Dashboard> {
   }
 
   Widget _buildActiveLoanCard() {
+    if (_loanData == null) return const SizedBox.shrink();
+
+    final loanType = _loanData!['loan_type'] ?? 'Unknown';
+    final amount = _loanData!['amount'] ?? 0.0;
+    final status = _loanData!['status'] ?? 'pending';
+
     return GestureDetector(
       onTap: () {
         Navigator.push(
@@ -402,9 +446,9 @@ class _DashboardState extends State<Dashboard> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'ACTIVE LOAN - REGULAR',
-                  style: TextStyle(
+                Text(
+                  'ACTIVE LOAN - ${loanType.toUpperCase()}',
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
@@ -423,7 +467,7 @@ class _DashboardState extends State<Dashboard> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '₱${(_loanData['outstandingBalance'] ?? 0.0).toStringAsFixed(2)}',
+                        '₱${(amount as num).toStringAsFixed(2)}',
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 32,
@@ -432,7 +476,7 @@ class _DashboardState extends State<Dashboard> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Outstanding balance',
+                        'Loan amount',
                         style: TextStyle(
                           color: Colors.white.withOpacity(0.7),
                           fontSize: 12,
@@ -447,10 +491,10 @@ class _DashboardState extends State<Dashboard> {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      '₱${(_loanData['monthlyPayment'] ?? 0.0).toStringAsFixed(2)}',
+                      status.toUpperCase(),
                       style: const TextStyle(
                         color: _accentGold,
-                        fontSize: 20,
+                        fontSize: 16,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -458,7 +502,7 @@ class _DashboardState extends State<Dashboard> {
                     Row(
                       children: [
                         Text(
-                          '/ month',
+                          'Status',
                           style: TextStyle(
                             color: Colors.white.withOpacity(0.7),
                             fontSize: 11,
@@ -472,75 +516,41 @@ class _DashboardState extends State<Dashboard> {
               ],
             ),
             const SizedBox(height: 16),
-            // Next Due Container
+            // Date Container
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: const Color(0xFF2D7A4A),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Column(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.calendar_today,
-                            color: Colors.white,
-                            size: 16,
-                          ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Next due',
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.8),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w400,
-                            ),
-                          ),
-                        ],
+                      const Icon(
+                        Icons.calendar_today,
+                        color: Colors.white,
+                        size: 16,
                       ),
+                      const SizedBox(width: 8),
                       Text(
-                        _loanData['nextDueDate'] ?? 'N/A',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
+                        'Submitted on',
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.8),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w400,
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  // Progress bar
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(4),
-                          child: LinearProgressIndicator(
-                            value:
-                                (_loanData['progress'] ?? 0) /
-                                (_loanData['totalMonths'] ?? 12),
-                            backgroundColor: const Color(0xFF1A5A35),
-                            valueColor: const AlwaysStoppedAnimation<Color>(
-                              _accentGold,
-                            ),
-                            minHeight: 4,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        '${_loanData['progress'] ?? 0}/${_loanData['totalMonths'] ?? 12} mo.',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
+                  Text(
+                    _loanData!['date_submitted'] ?? 'N/A',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ],
               ),

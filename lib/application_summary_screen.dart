@@ -87,7 +87,10 @@ class _ApplicationSummaryScreenState extends State<ApplicationSummaryScreen> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) => const ReviewTermsScreen(),
+                            builder: (_) => ReviewTermsScreen(
+                              loanAmount: widget.loanAmount,
+                              loanType: widget.loanType.label,
+                            ),
                           ),
                         );
                       }

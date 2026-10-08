@@ -1,11 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'app_theme.dart';
-import 'otp_service.dart';
+import 'application_service.dart';
+import '../services/supabase_service.dart';
+import '../services/database_service.dart';
 import 'loan_application_submitted_screen.dart';
 
 class EmailOtpVerificationScreen extends StatefulWidget {
-  const EmailOtpVerificationScreen({super.key});
+  final double loanAmount;
+  final String loanType;
+
+  const EmailOtpVerificationScreen({
+    super.key,
+    required this.loanAmount,
+    required this.loanType,
+  });
 
   @override
   State<EmailOtpVerificationScreen> createState() =>
@@ -19,11 +29,12 @@ class _EmailOtpVerificationScreenState
     (index) => TextEditingController(),
   );
   final List<FocusNode> _focusNodes = List.generate(6, (index) => FocusNode());
-  final OtpService _otpService = OtpService();
 
-  int _remainingSeconds = OtpService.resendTimeoutSeconds;
+  int _remainingSeconds = 60;
   bool _canResend = false;
   bool _isVerifying = false;
+  bool _isEmailVerified = false;
+  String? _referenceNumber;
 
   @override
   void initState() {
@@ -44,7 +55,7 @@ class _EmailOtpVerificationScreenState
 
   void _startResendTimer() {
     setState(() {
-      _remainingSeconds = OtpService.resendTimeoutSeconds;
+      _remainingSeconds = 60;
       _canResend = false;
     });
 
@@ -96,18 +107,31 @@ class _EmailOtpVerificationScreenState
   void _handleResend() async {
     if (!_canResend) return;
 
-    await _otpService.generateOtp();
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'A new verification code has been sent to your registered email.',
-          ),
-          backgroundColor: AppTheme.primaryGreen,
-        ),
+    try {
+      await SupabaseService().sendOtp(
+        email: Supabase.instance.client.auth.currentUser?.email ?? '',
       );
-      _startResendTimer();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'A new verification code has been sent to your registered email.',
+            ),
+            backgroundColor: AppTheme.primaryGreen,
+          ),
+        );
+        _startResendTimer();
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to resend OTP: ${error.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -119,29 +143,51 @@ class _EmailOtpVerificationScreenState
     });
 
     final otp = _getOtpValue();
-    final isValid = await _otpService.verifyOtp(otp);
 
-    if (mounted) {
-      setState(() {
-        _isVerifying = false;
-      });
+    try {
+      if (!_isEmailVerified) {
+        await SupabaseService().verifyOtp(
+          email: Supabase.instance.client.auth.currentUser?.email ?? '',
+          token: otp,
+        );
+        _isEmailVerified = true;
+      }
 
-      if (isValid) {
+      _referenceNumber ??= ApplicationService.generateReferenceNumber();
+      await DatabaseService().submitLoanApplication(
+        applicationId: _referenceNumber!,
+        loanType: widget.loanType,
+        amount: widget.loanAmount,
+      );
+
+      if (mounted) {
         _clearOtp(requestFocus: false);
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (_) => const LoanApplicationSubmittedScreen(),
+            builder: (_) => LoanApplicationSubmittedScreen(
+              referenceNumber: _referenceNumber!,
+              submissionDateTime: ApplicationService.formatSubmissionDateTime(),
+            ),
           ),
         );
-      } else {
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _isVerifying = false;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Invalid verification code. Please try again.'),
+          SnackBar(
+            content: Text(
+              _isEmailVerified
+                  ? 'Application could not be submitted: $error'
+                  : 'Invalid verification code. Please try again.',
+            ),
             backgroundColor: Color(0xFFD9534F),
           ),
         );
-        _clearOtp();
+        if (!_isEmailVerified) _clearOtp();
       }
     }
   }
@@ -444,6 +490,11 @@ class OtpTimer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final minutes = remainingSeconds ~/ 60;
+    final seconds = remainingSeconds % 60;
+    final timeString =
+        '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+
     return Column(
       children: [
         const Text(
@@ -458,9 +509,7 @@ class OtpTimer extends StatelessWidget {
         GestureDetector(
           onTap: canResend ? onResend : null,
           child: Text(
-            canResend
-                ? 'Resend Code'
-                : 'Resend Code in ${OtpService.formatTime(remainingSeconds)}',
+            canResend ? 'Resend Code' : 'Resend Code in $timeString',
             style: TextStyle(
               color: canResend
                   ? AppTheme.primaryGreen

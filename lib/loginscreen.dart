@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-import 'confirmpasscreen.dart';
+import 'services/auth_error_message.dart';
+import '../services/supabase_service.dart';
+import 'dashboard.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -9,19 +11,63 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final TextEditingController _memberIdController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _obscurePassword = true;
+  bool _isLoading = false;
 
-  bool get _isFormValid =>
-      _memberIdController.text.isNotEmpty &&
-      _passwordController.text.isNotEmpty;
+  void _showLoginMessage(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.red),
+    );
+  }
 
   @override
   void dispose() {
-    _memberIdController.dispose();
+    _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  Future<void> _handleLogin() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    if (email.isEmpty || password.isEmpty) {
+      _showLoginMessage('Please enter your email and password.');
+      return;
+    }
+
+    final isValidEmail = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email);
+    if (!isValidEmail) {
+      _showLoginMessage('Please enter a valid email address.');
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      await SupabaseService().signIn(email: email, password: password);
+
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const Dashboard()),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        _showLoginMessage(getAuthErrorMessage(error));
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   @override
@@ -58,12 +104,12 @@ class _LoginScreenState extends State<LoginScreen> {
                   style: TextStyle(color: Colors.grey, fontSize: 14),
                 ),
                 const SizedBox(height: 48),
-                // Member ID field
+                // Email field
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     const Text(
-                      'MEMBER ID',
+                      'EMAIL',
                       style: TextStyle(
                         color: Colors.black,
                         fontSize: 12,
@@ -78,9 +124,11 @@ class _LoginScreenState extends State<LoginScreen> {
                         border: Border.all(color: const Color(0xFFE0E0E0)),
                       ),
                       child: TextField(
-                        controller: _memberIdController,
+                        controller: _emailController,
+                        keyboardType: TextInputType.emailAddress,
+                        autocorrect: false,
                         decoration: InputDecoration(
-                          hintText: 'e.g. CSUCC-2019-0042',
+                          hintText: 'e.g. member@example.com',
                           hintStyle: const TextStyle(color: Color(0xFF9E9E9E)),
                           border: InputBorder.none,
                           contentPadding: const EdgeInsets.symmetric(
@@ -159,17 +207,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: _isFormValid
-                        ? () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const ConfirmPassScreen(),
-                              ),
-                            );
-                            _passwordController.clear();
-                          }
-                        : null,
+                    onPressed: _isLoading ? null : _handleLogin,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFC8A430),
                       foregroundColor: Colors.black,
@@ -181,13 +219,24 @@ class _LoginScreenState extends State<LoginScreen> {
                         borderRadius: BorderRadius.circular(30),
                       ),
                     ),
-                    child: const Text(
-                      'Login',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                    child: _isLoading
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.black,
+                              ),
+                            ),
+                          )
+                        : const Text(
+                            'Login',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
                   ),
                 ),
                 const SizedBox(height: 32),

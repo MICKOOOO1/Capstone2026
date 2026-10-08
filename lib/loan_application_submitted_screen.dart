@@ -5,13 +5,22 @@ import 'application_service.dart';
 import 'application_state.dart';
 
 class LoanApplicationSubmittedScreen extends StatefulWidget {
-  const LoanApplicationSubmittedScreen({super.key});
+  final String referenceNumber;
+  final String submissionDateTime;
+
+  const LoanApplicationSubmittedScreen({
+    super.key,
+    required this.referenceNumber,
+    required this.submissionDateTime,
+  });
 
   @override
-  State<LoanApplicationSubmittedScreen> createState() => _LoanApplicationSubmittedScreenState();
+  State<LoanApplicationSubmittedScreen> createState() =>
+      _LoanApplicationSubmittedScreenState();
 }
 
-class _LoanApplicationSubmittedScreenState extends State<LoanApplicationSubmittedScreen> {
+class _LoanApplicationSubmittedScreenState
+    extends State<LoanApplicationSubmittedScreen> {
   @override
   void initState() {
     super.initState();
@@ -24,8 +33,6 @@ class _LoanApplicationSubmittedScreenState extends State<LoanApplicationSubmitte
 
   @override
   Widget build(BuildContext context) {
-    final referenceNumber = ApplicationService.generateReferenceNumber();
-    final submissionDateTime = ApplicationService.formatSubmissionDateTime();
     final processingTime = ApplicationService.getExpectedProcessingTime();
 
     return Scaffold(
@@ -41,13 +48,11 @@ class _LoanApplicationSubmittedScreenState extends State<LoanApplicationSubmitte
               const SuccessHeader(),
               const SizedBox(height: AppTheme.spacingXL),
               ReferenceCard(
-                referenceNumber: referenceNumber,
-                submissionDateTime: submissionDateTime,
+                referenceNumber: widget.referenceNumber,
+                submissionDateTime: widget.submissionDateTime,
               ),
               const SizedBox(height: AppTheme.spacingL),
-              ProcessingTimeCard(
-                processingTime: processingTime,
-              ),
+              ProcessingTimeCard(processingTime: processingTime),
               const SizedBox(height: AppTheme.spacingXL),
               const NextStepsCard(),
               const SizedBox(height: AppTheme.spacingXL),
@@ -55,9 +60,7 @@ class _LoanApplicationSubmittedScreenState extends State<LoanApplicationSubmitte
                 onPressed: () {
                   Navigator.pushAndRemoveUntil(
                     context,
-                    MaterialPageRoute(
-                      builder: (_) => const Dashboard(),
-                    ),
+                    MaterialPageRoute(builder: (_) => const Dashboard()),
                     (route) => false,
                   );
                 },
@@ -108,11 +111,7 @@ class SuccessHeader extends StatelessWidget {
               ),
             ],
           ),
-          child: const Icon(
-            Icons.check_rounded,
-            color: Colors.white,
-            size: 50,
-          ),
+          child: const Icon(Icons.check_rounded, color: Colors.white, size: 50),
         ),
         const SizedBox(height: AppTheme.spacingL),
         const Text(
@@ -325,11 +324,7 @@ class NextStepsCard extends StatelessWidget {
               color: const Color(0xFFE8F3EC),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: Icon(
-              icon,
-              color: AppTheme.primaryGreen,
-              size: 20,
-            ),
+            child: Icon(icon, color: AppTheme.primaryGreen, size: 20),
           ),
           const SizedBox(width: AppTheme.spacingM),
           Expanded(
@@ -370,10 +365,7 @@ class PrimaryButton extends StatelessWidget {
         ),
         child: const Text(
           'Return to Dashboard',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
       ),
     );

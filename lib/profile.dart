@@ -1,9 +1,48 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'app_theme.dart';
 import 'app_bottom_navigation_bar.dart';
+import '../services/supabase_service.dart';
+import '../services/database_service.dart';
 
-class ProfileScreen extends StatelessWidget {
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  final DatabaseService _dbService = DatabaseService();
+  Map<String, dynamic>? _userData;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) return;
+
+      final memberData = await _dbService.getMember(user.id);
+      if (mounted) {
+        setState(() {
+          _userData = memberData;
+          _isLoading = false;
+        });
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -14,21 +53,23 @@ class ProfileScreen extends StatelessWidget {
           children: [
             const ProfileAppBar(),
             Expanded(
-              child: SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                padding: const EdgeInsets.all(AppTheme.spacingL),
-                child: Column(
-                  children: const [
-                    ProfileHeaderCard(),
-                    SizedBox(height: AppTheme.spacingL),
-                    PersonalInformationCard(),
-                    SizedBox(height: AppTheme.spacingL),
-                    SettingsMenuCard(),
-                    SizedBox(height: AppTheme.spacingL),
-                    SignOutButton(),
-                  ],
-                ),
-              ),
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : SingleChildScrollView(
+                      physics: const BouncingScrollPhysics(),
+                      padding: const EdgeInsets.all(AppTheme.spacingL),
+                      child: Column(
+                        children: [
+                          ProfileHeaderCard(userData: _userData),
+                          const SizedBox(height: AppTheme.spacingL),
+                          PersonalInformationCard(userData: _userData),
+                          const SizedBox(height: AppTheme.spacingL),
+                          const SettingsMenuCard(),
+                          const SizedBox(height: AppTheme.spacingL),
+                          SignOutButton(),
+                        ],
+                      ),
+                    ),
             ),
             AppBottomNavigationBar(currentIndex: 2, parentContext: context),
           ],
@@ -64,10 +105,17 @@ class ProfileAppBar extends StatelessWidget {
 }
 
 class ProfileHeaderCard extends StatelessWidget {
-  const ProfileHeaderCard({super.key});
+  final Map<String, dynamic>? userData;
+
+  const ProfileHeaderCard({super.key, this.userData});
 
   @override
   Widget build(BuildContext context) {
+    final firstName = userData?['first_name'] ?? 'Loading';
+    final lastName = userData?['last_name'] ?? '...';
+    final memberId = userData?['member_id'] ?? 'Loading';
+    final initials = '${firstName[0]}${lastName[0]}'.toUpperCase();
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -84,10 +132,10 @@ class ProfileHeaderCard extends StatelessWidget {
               color: AppTheme.accentGold,
               shape: BoxShape.circle,
             ),
-            child: const Center(
+            child: Center(
               child: Text(
-                'MS',
-                style: TextStyle(
+                initials,
+                style: const TextStyle(
                   color: AppTheme.primaryGreen,
                   fontSize: 20,
                   fontWeight: FontWeight.w700,
@@ -96,29 +144,29 @@ class ProfileHeaderCard extends StatelessWidget {
             ),
           ),
           const SizedBox(width: AppTheme.spacingL),
-          const Expanded(
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Maria Santos',
-                  style: TextStyle(
+                  '$firstName $lastName',
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-                SizedBox(height: 4),
+                const SizedBox(height: 4),
                 Text(
-                  'CSUCC-2019-0042',
-                  style: TextStyle(
+                  memberId,
+                  style: const TextStyle(
                     color: AppTheme.lightGrayGreen,
                     fontSize: 13,
                     fontWeight: FontWeight.w400,
                   ),
                 ),
-                SizedBox(height: AppTheme.spacingS),
-                MemberBadge(),
+                const SizedBox(height: AppTheme.spacingS),
+                MemberBadge(status: userData?['status']),
               ],
             ),
           ),
@@ -129,16 +177,21 @@ class ProfileHeaderCard extends StatelessWidget {
 }
 
 class MemberBadge extends StatelessWidget {
-  const MemberBadge({super.key});
+  final String? status;
+
+  const MemberBadge({super.key, this.status});
 
   @override
   Widget build(BuildContext context) {
+    final isActive = status == 'active';
+    final badgeColor = isActive ? AppTheme.accentGold : Colors.red;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: AppTheme.darkOlive,
         borderRadius: BorderRadius.circular(AppTheme.pillBorderRadius),
-        border: Border.all(color: AppTheme.accentGold, width: 1),
+        border: Border.all(color: badgeColor, width: 1),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -146,16 +199,16 @@ class MemberBadge extends StatelessWidget {
           Container(
             width: 6,
             height: 6,
-            decoration: const BoxDecoration(
-              color: AppTheme.accentGold,
+            decoration: BoxDecoration(
+              color: badgeColor,
               shape: BoxShape.circle,
             ),
           ),
           const SizedBox(width: 6),
-          const Text(
-            'Active Member',
+          Text(
+            isActive ? 'Active Member' : 'Inactive',
             style: TextStyle(
-              color: AppTheme.accentGold,
+              color: badgeColor,
               fontSize: 11,
               fontWeight: FontWeight.w600,
             ),
@@ -167,10 +220,17 @@ class MemberBadge extends StatelessWidget {
 }
 
 class PersonalInformationCard extends StatelessWidget {
-  const PersonalInformationCard({super.key});
+  final Map<String, dynamic>? userData;
+
+  const PersonalInformationCard({super.key, this.userData});
 
   @override
   Widget build(BuildContext context) {
+    final phone = userData?['phone'] ?? 'N/A';
+    final email = userData?['email'] ?? 'N/A';
+    final address = userData?['address'] ?? 'N/A';
+    final dateJoined = userData?['date_joined'] ?? 'N/A';
+
     return Container(
       padding: const EdgeInsets.all(AppTheme.spacingL),
       decoration: BoxDecoration(
@@ -194,20 +254,15 @@ class PersonalInformationCard extends StatelessWidget {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              ProfileInfoRow(label: 'Birthdate', value: 'March 14, 1985'),
+              ProfileInfoRow(label: 'Date Joined', value: dateJoined),
               const Divider(color: AppTheme.divider, height: 1),
-              ProfileInfoRow(label: 'Mobile', value: '+63 917 456 7890'),
+              ProfileInfoRow(label: 'Mobile', value: phone),
               const Divider(color: AppTheme.divider, height: 1),
-              ProfileInfoRow(label: 'Email', value: 'm.santos@csucc.edu.ph'),
-              const Divider(color: AppTheme.divider, height: 1),
-              ProfileInfoRow(
-                label: 'Department',
-                value: 'Faculty - College of Engineering',
-              ),
+              ProfileInfoRow(label: 'Email', value: email),
               const Divider(color: AppTheme.divider, height: 1),
               ProfileInfoRow(
                 label: 'Address',
-                value: '123 Rizal St., Cabadbaran City, Agusan del Norte',
+                value: address,
               ),
             ],
           ),
@@ -332,12 +387,30 @@ class SettingsMenuItem extends StatelessWidget {
 class SignOutButton extends StatelessWidget {
   const SignOutButton({super.key});
 
+  Future<void> _handleSignOut(BuildContext context) async {
+    try {
+      await SupabaseService().signOut();
+      if (context.mounted) {
+        Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+      }
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Sign out failed: ${error.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       width: double.infinity,
       child: OutlinedButton(
-        onPressed: () {},
+        onPressed: () => _handleSignOut(context),
         style: OutlinedButton.styleFrom(
           backgroundColor: AppTheme.dangerBackground,
           foregroundColor: AppTheme.danger,

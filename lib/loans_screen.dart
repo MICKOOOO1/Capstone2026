@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'app_theme.dart';
 import 'app_bottom_navigation_bar.dart';
 import 'profile_confirmation_screen.dart';
 import 'responsive.dart';
 import 'schedtracker.dart';
 import 'loan_calculator_service.dart';
+import '../services/database_service.dart';
 
 class LoansScreen extends StatefulWidget {
   final bool hideTabs;
@@ -18,6 +20,36 @@ class LoansScreen extends StatefulWidget {
 class _LoansScreenState extends State<LoansScreen> {
   int _selectedTab = 0;
   String _selectedFilter = 'All';
+  final DatabaseService _dbService = DatabaseService();
+  List<Map<String, dynamic>> _myLoans = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMyLoans();
+  }
+
+  Future<void> _loadMyLoans() async {
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) return;
+
+      final loans = await _dbService.getLoanApplications(user.id);
+      if (mounted) {
+        setState(() {
+          _myLoans = loans;
+          _isLoading = false;
+        });
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -293,6 +325,10 @@ class _LoansScreenState extends State<LoansScreen> {
   }
 
   Widget _buildMyLoans() {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
     return SingleChildScrollView(
       padding: EdgeInsets.symmetric(
         horizontal: Responsive.horizontalPadding(context),
@@ -369,18 +405,22 @@ class _LoansScreenState extends State<LoansScreen> {
   }
 
   Widget _buildSummaryCards() {
+    final activeCount = _myLoans.where((l) => l['status'] == 'released' || l['status'] == 'overdue').length;
+    final pendingCount = _myLoans.where((l) => l['status'] == 'pending' || l['status'] == 'under review').length;
+    final paidCount = _myLoans.where((l) => l['status'] == 'completed').length;
+
     return Row(
       children: [
         Expanded(
-          child: _buildSummaryCard('1', 'Active', const Color(0xFF206A3B)),
+          child: _buildSummaryCard(activeCount.toString(), 'Active', const Color(0xFF206A3B)),
         ),
         SizedBox(width: Responsive.spacing(context, 12)),
         Expanded(
-          child: _buildSummaryCard('1', 'Pending', const Color(0xFFE67E22)),
+          child: _buildSummaryCard(pendingCount.toString(), 'Pending', const Color(0xFFE67E22)),
         ),
         SizedBox(width: Responsive.spacing(context, 12)),
         Expanded(
-          child: _buildSummaryCard('1', 'Paid', const Color(0xFF206A3B)),
+          child: _buildSummaryCard(paidCount.toString(), 'Paid', const Color(0xFF206A3B)),
         ),
       ],
     );
@@ -425,6 +465,25 @@ class _LoansScreenState extends State<LoansScreen> {
   }
 
   Widget _buildLoanHistory() {
+    final filteredLoans = _selectedFilter == 'All'
+        ? _myLoans
+        : _myLoans.where((loan) {
+            switch (_selectedFilter) {
+              case 'Pending':
+                return loan['status'] == 'pending' || loan['status'] == 'under review';
+              case 'Approved':
+                return loan['status'] == 'approved';
+              case 'Active':
+                return loan['status'] == 'released' || loan['status'] == 'overdue';
+              case 'Fully Paid':
+                return loan['status'] == 'completed';
+              case 'Rejected':
+                return loan['status'] == 'rejected';
+              default:
+                return true;
+            }
+          }).toList();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -437,46 +496,56 @@ class _LoansScreenState extends State<LoansScreen> {
           ),
         ),
         SizedBox(height: Responsive.spacing(context, 16)),
-        _buildLoanHistoryCard(
-          'Regular Loan',
-          'LN-2025-001',
-          'Applied May 10, 2025',
-          'Active',
-          const Color(0xFF206A3B),
-          82666.67,
-          8266.67,
-          'Aug 15, 2025',
-          2,
-          12,
-        ),
-        SizedBox(height: Responsive.spacing(context, 16)),
-        _buildLoanHistoryCard(
-          'Educational Loan',
-          'LN-2024-015',
-          'Applied Jan 15, 2024',
-          'Fully Paid',
-          const Color(0xFF206A3B),
-          45000.00,
-          3750.00,
-          null,
-          12,
-          12,
-        ),
-        SizedBox(height: Responsive.spacing(context, 16)),
-        _buildLoanHistoryCard(
-          'Quick Loan',
-          'LN-2025-008',
-          'Applied Jul 20, 2025',
-          'Pending',
-          const Color(0xFFE67E22),
-          25000.00,
-          null,
-          null,
-          null,
-          null,
-        ),
+        if (filteredLoans.isEmpty)
+          Padding(
+            padding: EdgeInsets.symmetric(vertical: Responsive.spacing(context, 32)),
+            child: Text(
+              'No loans found',
+              style: TextStyle(
+                color: const Color(0xFF7D8A82),
+                fontSize: Responsive.bodySize(context),
+              ),
+            ),
+          )
+        else
+          ...filteredLoans.map((loan) {
+            final statusColor = _getStatusColor(loan['status']);
+            return Padding(
+              padding: EdgeInsets.only(bottom: Responsive.spacing(context, 16)),
+              child: _buildLoanHistoryCard(
+                loan['loan_type'] ?? 'Unknown',
+                loan['application_id'] ?? 'N/A',
+                loan['date_submitted'] ?? 'N/A',
+                loan['status'] ?? 'Unknown',
+                statusColor,
+                loan['amount'],
+                null,
+                null,
+                null,
+                null,
+              ),
+            );
+          }).toList(),
       ],
     );
+  }
+
+  Color _getStatusColor(String? status) {
+    switch (status) {
+      case 'approved':
+      case 'released':
+      case 'completed':
+        return const Color(0xFF206A3B);
+      case 'pending':
+      case 'under review':
+        return const Color(0xFFE67E22);
+      case 'rejected':
+        return const Color(0xFFD32F2F);
+      case 'overdue':
+        return const Color(0xFFD32F2F);
+      default:
+        return const Color(0xFF757575);
+    }
   }
 
   Widget _buildLoanHistoryCard(

@@ -38,6 +38,8 @@ dependencies:
   local_auth: ^2.3.0
   flutter_secure_storage: ^9.2.4
   safe_device: ^1.4.1
+  supabase_flutter: ^2.8.4
+  flutter_dotenv: ^5.1.0
 
 dev_dependencies:
   flutter_test:
@@ -67,6 +69,7 @@ flutter:
     - assets/adevertise1.png
     - assets/advertise 2.png
     - assets/advertise3.png
+    - .env
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
