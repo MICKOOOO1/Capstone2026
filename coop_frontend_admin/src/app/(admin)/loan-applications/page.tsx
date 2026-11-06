@@ -1,19 +1,22 @@
 "use client";
 
+import { actionButtonStyles } from "@/components/shared/actionButtonStyles";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Toolbar, {
   LoanSortOption,
   LoanStatusFilter,
 } from "@/components/loan-applications/Toolbar";
 import LoanApplicationsTable from "@/components/loan-applications/LoanApplicationsTable";
-import { loanApplications as mockLoanApplications } from "@/components/loan-applications/LoanApplicationsData";
 import { fetchLoanApplications, LoanApplication } from "@/lib/api";
+import { MembershipTypeFilter } from "@/lib/membership";
+import { useAdminAuth } from "@/components/auth/AdminAuthProvider";
 
 interface AppliedFilters {
   search: string;
   memberId: string;
   loanType: string;
   status: LoanStatusFilter;
+  membershipType: MembershipTypeFilter;
 }
 
 const normalizeFilterValue = (value: string) =>
@@ -27,6 +30,7 @@ const getApplicationTime = (application: LoanApplication) => {
 export default function LoanApplicationsPage() {
   const [applications, setApplications] = useState<LoanApplication[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [searchInput, setSearchInput] = useState("");
   const [memberIdInput, setMemberIdInput] = useState("");
   const [filters, setFilters] = useState<AppliedFilters>({
@@ -34,27 +38,57 @@ export default function LoanApplicationsPage() {
     memberId: "",
     loanType: "All Loan Types",
     status: "All Status",
+    membershipType: "All Members",
   });
   const [sortOption, setSortOption] = useState<LoanSortOption>("Newest");
   const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
+  const { role } = useAdminAuth();
+  const readOnly = role !== "super_admin";
+
+  const fetchApplications = useCallback(() => fetchLoanApplications(), []);
 
   const loadApplications = useCallback(async () => {
+    setLoading(true);
+    setLoadError("");
     try {
-      setLoading(true);
-      const data = await fetchLoanApplications();
-      setApplications(data.length > 0 ? data : mockLoanApplications);
+      setApplications(await fetchApplications());
     } catch (error) {
       console.error("Failed to load applications:", error);
-      setApplications(mockLoanApplications);
+      setLoadError("Unable to load applications from the secure loan database.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [fetchApplications]);
+
+  const refreshApplications = () => {
+    setLoading(true);
+    setLoadError("");
+    void loadApplications();
+  };
 
   useEffect(() => {
-    void loadApplications();
-  }, [loadApplications]);
+    let isActive = true;
+    void fetchApplications()
+      .then((data) => {
+        if (isActive) {
+          setApplications(data);
+          setLoadError("");
+        }
+      })
+      .catch((error: unknown) => {
+        console.error("Failed to load applications:", error);
+        if (isActive) {
+          setLoadError("Unable to load applications from the secure loan database.");
+        }
+      })
+      .finally(() => {
+        if (isActive) setLoading(false);
+      });
+    return () => {
+      isActive = false;
+    };
+  }, [fetchApplications]);
 
   const loanTypeOptions = useMemo(() => {
     return Array.from(new Set(applications.map((application) => application.type))).sort();
@@ -82,8 +116,18 @@ export default function LoanApplicationsPage() {
         filters.loanType === "All Loan Types" || application.type === filters.loanType;
       const matchesStatus =
         filters.status === "All Status" || application.status === filters.status;
+      const matchesMembershipType =
+        filters.membershipType === "All Members" ||
+        (application.membershipType ?? null) ===
+          (filters.membershipType === "Regular Member" ? "regular" : "associate");
 
-      return matchesSearch && matchesMemberId && matchesLoanType && matchesStatus;
+      return (
+        matchesSearch &&
+        matchesMemberId &&
+        matchesLoanType &&
+        matchesStatus &&
+        matchesMembershipType
+      );
     });
   }, [applications, filters]);
 
@@ -111,7 +155,8 @@ export default function LoanApplicationsPage() {
     filters.search.trim() !== "" ||
     filters.memberId.trim() !== "" ||
     filters.loanType !== "All Loan Types" ||
-    filters.status !== "All Status";
+    filters.status !== "All Status" ||
+    filters.membershipType !== "All Members";
 
   const applyTextFilters = () => {
     setFilters((current) => ({
@@ -132,6 +177,13 @@ export default function LoanApplicationsPage() {
     setCurrentPage(1);
   };
 
+  const updateMembershipTypeFilter = (
+    membershipType: MembershipTypeFilter
+  ) => {
+    setFilters((current) => ({ ...current, membershipType }));
+    setCurrentPage(1);
+  };
+
   const updateSortOption = (sort: LoanSortOption) => {
     setSortOption(sort);
     setCurrentPage(1);
@@ -143,7 +195,41 @@ export default function LoanApplicationsPage() {
   };
 
   const exportApplications = () => {
-    window.alert("Frontend only: export prepared for the current loan application list.");
+    const csvRows = [
+      [
+        "Application ID",
+        "Member ID",
+        "Member Name",
+        "Membership Type",
+        "Loan Type",
+        "Amount",
+        "Status",
+        "Date Applied",
+      ],
+      ...sortedApplications.map((application) => [
+        application.id,
+        application.memberId,
+        application.member,
+        application.membershipType ?? "Not Set",
+        application.type,
+        application.amount,
+        application.status,
+        application.date,
+      ]),
+    ];
+    const csv = csvRows
+      .map((row) =>
+        row.map((value) => `"${value.replace(/"/g, '""')}"`).join(",")
+      )
+      .join("\r\n");
+    const downloadUrl = URL.createObjectURL(
+      new Blob([csv], { type: "text/csv;charset=utf-8" })
+    );
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    link.download = "loan-applications.csv";
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 0);
   };
 
   return (
@@ -153,6 +239,7 @@ export default function LoanApplicationsPage() {
         memberIdValue={memberIdInput}
         loanTypeFilter={filters.loanType}
         statusFilter={filters.status}
+        membershipTypeFilter={filters.membershipType}
         sortOption={sortOption}
         pageSize={pageSize}
         loanTypeOptions={loanTypeOptions}
@@ -161,6 +248,7 @@ export default function LoanApplicationsPage() {
         onApplyFilters={applyTextFilters}
         onLoanTypeChange={updateLoanTypeFilter}
         onStatusFilterChange={updateStatusFilter}
+        onMembershipTypeChange={updateMembershipTypeFilter}
         onSortChange={updateSortOption}
         onPageSizeChange={updatePageSize}
         onExport={exportApplications}
@@ -169,6 +257,17 @@ export default function LoanApplicationsPage() {
       {loading ? (
         <div className="border-t border-[#E5E7EB] px-4 py-10 text-center text-[14px] font-medium text-[#64748B]">
           Loading applications...
+        </div>
+      ) : loadError ? (
+        <div role="alert" className="border-t border-[#E5E7EB] px-4 py-10 text-center text-sm font-medium text-[#B91C1C]">
+          {loadError}
+          <button
+            type="button"
+            onClick={refreshApplications}
+            className={`ml-2 ${actionButtonStyles()}`}
+          >
+            Retry
+          </button>
         </div>
       ) : (
         <LoanApplicationsTable
@@ -179,7 +278,9 @@ export default function LoanApplicationsPage() {
           showingFrom={showingFrom}
           showingTo={showingTo}
           hasActiveFilters={hasActiveFilters}
+          readOnly={readOnly}
           onPageChange={setCurrentPage}
+          onApplicationUpdated={refreshApplications}
         />
       )}
     </div>

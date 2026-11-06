@@ -2,14 +2,7 @@
 
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area } from "recharts";
 
-const chartData = [
-  { month: "Feb", applications: 24, approved: 18 },
-  { month: "Mar", applications: 31, approved: 24 },
-  { month: "Apr", applications: 28, approved: 20 },
-  { month: "May", applications: 35, approved: 27 },
-  { month: "Jun", applications: 42, approved: 33 },
-  { month: "Jul", applications: 38, approved: 29 },
-];
+const chartData: { month: string; applications: number; approved: number }[] = [];
 
 export default function AreaChart() {
   const CustomTooltip = ({ active, payload, label }: any) => {

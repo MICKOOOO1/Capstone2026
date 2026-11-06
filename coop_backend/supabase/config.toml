@@ -1,0 +1,6 @@
+project_id = "coop-backend"
+
+# Login accepts an ID/password before a JWT exists. The function verifies
+# credentials using Supabase Auth; its password-change mode verifies the JWT.
+[functions.member-auth]
+verify_jwt = false

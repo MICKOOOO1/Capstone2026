@@ -242,17 +242,6 @@ CREATE POLICY "Users can update own notifications"
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
-INSERT INTO public.members (member_id, first_name, last_name, email, phone, address, income, credit_score) VALUES
-('M-001', 'Juan', 'dela Cruz', 'juan@example.com', '09171234567', '123 Main St, Manila', 120000, 750),
-('M-002', 'Rosa', 'Mendoza', 'rosa@example.com', '09181234567', '456 Oak Ave, Quezon City', 95000, 720),
-('M-003', 'Carlo', 'Reyes', 'carlo@example.com', '09191234567', '789 Pine Rd, Makati', 150000, 780)
-ON CONFLICT (member_id) DO NOTHING;
-
-INSERT INTO public.loan_applications (application_id, member_id, member_name, loan_type, amount, purpose, status, income, credit_score, date_submitted) VALUES
-('LA-2025-0089', (SELECT id FROM public.members WHERE member_id = 'M-001'), 'Juan dela Cruz', 'Regular', 75000.00, 'Business expansion', 'pending', 120000, 750, '2025-07-25'),
-('LA-2025-0088', (SELECT id FROM public.members WHERE member_id = 'M-002'), 'Rosa Mendoza', 'Medical', 30000.00, 'Medical emergency', 'under review', 95000, 720, '2025-07-24'),
-('LA-2025-0087', (SELECT id FROM public.members WHERE member_id = 'M-003'), 'Carlo Reyes', 'Educational', 50000.00, 'Tuition fee payment', 'approved', 150000, 780, '2025-07-23')
-ON CONFLICT (application_id) DO NOTHING;
 
 DO $$
 BEGIN

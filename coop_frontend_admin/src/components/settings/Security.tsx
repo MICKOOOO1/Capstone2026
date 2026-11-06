@@ -119,35 +119,7 @@ export default function Security() {
       <div className="bg-white rounded-[18px] shadow-[0_2px_10px_rgba(0,0,0,0.05)] border border-[#E5E7EB] p-5">
         <h2 className="text-[20px] font-bold text-[#1F2937] mb-5">Active Admin Sessions</h2>
         
-        <div className="space-y-3">
-          {/* Current User Session */}
-          <div className="h-[72px] bg-[#F0FDF4] border border-[#BBF7D0] rounded-[14px] p-4 flex items-center">
-            <div className="w-10 h-10 bg-[#166534] rounded-full flex items-center justify-center mr-3">
-              <span className="text-white text-[15px] font-semibold">JC</span>
-            </div>
-            <div className="flex-1">
-              <p className="text-[16px] font-bold text-[#1F2937]">John Cruz (You)</p>
-              <p className="text-[13px] text-[#6B7280]">Super Admin · 192.168.1.10 · 2h ago</p>
-            </div>
-          </div>
-
-          {/* Other Session */}
-          <div className="h-[72px] bg-white border border-[#E5E7EB] rounded-[14px] p-4 flex items-center">
-            <div className="w-10 h-10 bg-[#166534] rounded-full flex items-center justify-center mr-3">
-              <span className="text-white text-[15px] font-semibold">ML</span>
-            </div>
-            <div className="flex-1">
-              <p className="text-[16px] font-bold text-[#1F2937]">Maria Lim</p>
-              <p className="text-[13px] text-[#6B7280]">Manager · 192.168.1.15 · 4h ago</p>
-            </div>
-            <button
-              onClick={() => setShowRevokeModal(true)}
-              className="text-[15px] font-medium text-[#EF4444] hover:underline"
-            >
-              Revoke
-            </button>
-          </div>
-        </div>
+        <p className="text-sm text-[#6B7280]">No session data loaded.</p>
       </div>
 
       {/* Revoke Session Modal */}

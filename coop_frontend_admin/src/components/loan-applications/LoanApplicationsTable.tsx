@@ -1,9 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Eye, FileCheck2, Files, MoreVertical } from "lucide-react";
+import { CheckCircle2, Eye, FileCheck2, Files, MoreVertical } from "lucide-react";
 import { LoanApplication } from "@/lib/api";
 import MembersPagination from "@/components/members/MembersPagination";
+import MembershipTypeBadge from "@/components/shared/MembershipTypeBadge";
+import { useSecureAdminAction } from "@/components/auth/SecureAdminActionProvider";
+import LoanDetailsModal from "./LoanDetailsModal";
+import LoanDocumentsModal from "./LoanDocumentsModal";
+import LoanReleaseDialog from "./LoanReleaseDialog";
 
 interface LoanApplicationsTableProps {
   applications: LoanApplication[];
@@ -13,7 +18,9 @@ interface LoanApplicationsTableProps {
   showingFrom: number;
   showingTo: number;
   hasActiveFilters: boolean;
+  readOnly?: boolean;
   onPageChange: (page: number) => void;
+  onApplicationUpdated: () => void;
 }
 
 interface ActionMenuState {
@@ -31,8 +38,6 @@ const statusStyles: Record<LoanApplication["status"], string> = {
   Completed: "bg-gray-50 text-gray-600 border-gray-200",
   Overdue: "bg-red-100 text-red-700 border-red-300",
 };
-
-const normalizeMemberId = (memberId: string) => memberId.replace(/^CSUCC-/i, "");
 
 const formatAmount = (amount: string) => {
   const numericAmount = Number(amount.replace(/[^\d.-]/g, ""));
@@ -69,9 +74,15 @@ export default function LoanApplicationsTable({
   showingFrom,
   showingTo,
   hasActiveFilters,
+  readOnly = false,
   onPageChange,
+  onApplicationUpdated,
 }: LoanApplicationsTableProps) {
+  const [detailId, setDetailId] = useState<string | null>(null);
   const [openMenu, setOpenMenu] = useState<ActionMenuState | null>(null);
+  const [documentApplicationId, setDocumentApplicationId] = useState<string | null>(null);
+  const [releaseApplicationId, setReleaseApplicationId] = useState<string | null>(null);
+  const { beginSecureAction } = useSecureAdminAction();
   const menuRef = useRef<HTMLDivElement>(null);
   const selectedApplication = openMenu
     ? applications.find((application) => application.id === openMenu.id)
@@ -131,21 +142,73 @@ export default function LoanApplicationsTable({
   };
 
   const handleMenuAction = (action: string, application: LoanApplication) => {
-    window.alert(`Frontend only: ${action} for ${application.id}.`);
     setOpenMenu(null);
+    if (action === "release loan" && !readOnly && application.status === "Approved") {
+      setReleaseApplicationId(application.id);
+      return;
+    }
+    if (action === "view documents") {
+      setDocumentApplicationId(application.id);
+      return;
+    }
+
+    if (action === "review application") {
+      beginSecureAction({
+        action: "review-loan",
+        target: application.id,
+        title: "Review Loan Application",
+        question: `Move ${application.id} to Under Review?`,
+        confirmLabel: "Start Review",
+        successMessage: "Loan application moved to Under Review.",
+        payload: {},
+        details: [
+          { label: "Application ID", value: application.id },
+          { label: "Member", value: application.member },
+          { label: "Amount", value: formatAmount(application.amount) },
+        ],
+        onSuccess: onApplicationUpdated,
+      });
+      return;
+    }
+
+    if (action === "approve application") {
+      beginSecureAction({
+        action: "approve-loan",
+        target: application.id,
+        title: "Approve Loan Application",
+        question: `Approve ${application.id} for ${formatAmount(application.amount)}? The member's status, loan policy, and required documents will be checked first.`,
+        confirmLabel: "Approve Loan",
+        successMessage: "Loan application approved successfully.",
+        payload: {},
+        details: [
+          { label: "Application ID", value: application.id },
+          { label: "Member", value: application.member },
+          { label: "Amount", value: formatAmount(application.amount) },
+          { label: "Current Status", value: application.status },
+        ],
+        onSuccess: onApplicationUpdated,
+      });
+      return;
+    }
+
+    setDetailId(application.id);
   };
 
   return (
     <div className="relative">
-      <div className="overflow-hidden border-t border-[#E5E7EB]">
-        <table className="w-full table-fixed">
+      {detailId && <LoanDetailsModal applicationId={detailId} onClose={() => setDetailId(null)} />}
+      {releaseApplicationId && <LoanReleaseDialog key={releaseApplicationId} applicationId={releaseApplicationId} onClose={() => setReleaseApplicationId(null)} onReleased={onApplicationUpdated} />}
+      {documentApplicationId && <LoanDocumentsModal key={documentApplicationId} applicationId={documentApplicationId} onClose={() => setDocumentApplicationId(null)} />}
+      <div className="overflow-x-auto border-t border-[#E5E7EB]">
+        <table className="w-full min-w-[1000px] table-fixed">
           <colgroup>
+            <col className="w-[13%]" />
+            <col className="w-[15%]" />
+            <col className="w-[13%]" />
+            <col className="w-[12%]" />
+            <col className="w-[12%]" />
             <col className="w-[14%]" />
-            <col className="w-[18%]" />
-            <col className="w-[17%]" />
             <col className="w-[14%]" />
-            <col className="w-[14%]" />
-            <col className="w-[16%]" />
             <col className="w-[7%]" />
           </colgroup>
           <thead>
@@ -158,6 +221,9 @@ export default function LoanApplicationsTable({
               </th>
               <th className="px-3 text-left text-[10px] font-semibold uppercase tracking-wide text-[#64748B]">
                 Loan Type
+              </th>
+              <th className="px-2 text-center text-[10px] font-semibold uppercase tracking-wide text-[#64748B]">
+                Membership Type
               </th>
               <th className="px-3 text-left text-[10px] font-semibold uppercase tracking-wide text-[#64748B]">
                 Amount
@@ -188,11 +254,16 @@ export default function LoanApplicationsTable({
                       {application.member}
                     </p>
                     <p className="mt-0.5 truncate whitespace-nowrap text-[11px] font-medium text-[#64748B]" title={application.memberId}>
-                      {application.memberId ? normalizeMemberId(application.memberId) : "No member ID"}
+                      {application.memberId || "No member ID"}
                     </p>
                   </td>
                   <td className="truncate whitespace-nowrap px-3 text-[13px] font-normal text-[#334155]" title={application.type}>
                     {application.type}
+                  </td>
+                  <td className="px-2 text-center">
+                    <MembershipTypeBadge
+                      membershipType={application.membershipType}
+                    />
                   </td>
                   <td className="truncate whitespace-nowrap px-3 text-[13px] font-semibold text-[#0F172A]" title={application.amount}>
                     {formatAmount(application.amount)}
@@ -225,7 +296,7 @@ export default function LoanApplicationsTable({
               ))
             ) : (
               <tr>
-                <td colSpan={7} className="px-4 py-10 text-center">
+                <td colSpan={8} className="px-4 py-10 text-center">
                   <p className="text-[14px] font-semibold text-[#334155]">
                     No loan applications found.
                   </p>
@@ -267,17 +338,38 @@ export default function LoanApplicationsTable({
             <Eye className="h-4 w-4" />
             View Details
           </button>
-          {(selectedApplication.status === "Pending" ||
+          {!readOnly && selectedApplication.status === "Approved" && <button
+            type="button"
+            onClick={() => handleMenuAction("release loan", selectedApplication)}
+            className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[12px] font-medium text-[#047857] transition-colors hover:bg-[#ECFDF5]"
+            role="menuitem"
+          >
+            <CheckCircle2 className="h-4 w-4" />
+            Mark as Released
+          </button>}
+          {!readOnly &&
+            (selectedApplication.status === "Pending" ||
             selectedApplication.status === "Under Review") && (
-            <button
-              type="button"
-              onClick={() => handleMenuAction("review application", selectedApplication)}
-              className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[12px] font-medium text-[#374151] transition-colors hover:bg-[#F8FAFC] hover:text-[#155D3B]"
-              role="menuitem"
-            >
-              <FileCheck2 className="h-4 w-4" />
-              Review Application
-            </button>
+            <>
+              {selectedApplication.status === "Pending" && <button
+                type="button"
+                onClick={() => handleMenuAction("review application", selectedApplication)}
+                className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[12px] font-medium text-[#374151] transition-colors hover:bg-[#F8FAFC] hover:text-[#155D3B]"
+                role="menuitem"
+              >
+                <FileCheck2 className="h-4 w-4" />
+                Move to Under Review
+              </button>}
+              <button
+                type="button"
+                onClick={() => handleMenuAction("approve application", selectedApplication)}
+                className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[12px] font-medium text-[#047857] transition-colors hover:bg-[#ECFDF5]"
+                role="menuitem"
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                Approve Application
+              </button>
+            </>
           )}
           <button
             type="button"

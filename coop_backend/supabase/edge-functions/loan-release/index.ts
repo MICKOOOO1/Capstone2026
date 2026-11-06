@@ -4,13 +4,18 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
+async function sha256(value: string): Promise<string> {
+  const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))
+  return Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
 serve(async (req) => {
   try {
-    const { application_id } = await req.json()
+    const { application_id, grant_token } = await req.json()
 
-    if (!application_id) {
+    if (!application_id || !grant_token) {
       return new Response(
-        JSON.stringify({ error: 'Missing application_id' }),
+        JSON.stringify({ error: 'Application and action authorization are required' }),
         { status: 400, headers: { 'Content-Type': 'application/json' } }
       )
     }
@@ -32,8 +37,25 @@ serve(async (req) => {
         headers: { 'Content-Type': 'application/json' },
       })
     }
-    if (user.app_metadata?.role !== 'coop_admin') {
-      return new Response(JSON.stringify({ error: 'Admin access required' }), {
+    if (user.app_metadata?.role !== 'super_admin') {
+      return new Response(JSON.stringify({ error: 'Super Admin access required' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    const { data: consumed, error: grantError } = await supabase.rpc(
+      'consume_admin_action_grant',
+      {
+        p_user_id: user.id,
+        p_action_name: 'release-loan',
+        p_target_id: String(application_id),
+        p_request_fingerprint: await sha256('{}'),
+        p_grant_token_hash: await sha256(grant_token),
+      }
+    )
+    if (grantError || !consumed) {
+      return new Response(JSON.stringify({ error: 'Action authorization is invalid or expired' }), {
         status: 403,
         headers: { 'Content-Type': 'application/json' },
       })

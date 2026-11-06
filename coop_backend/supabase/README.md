@@ -4,59 +4,117 @@ This directory contains all the Supabase configuration for the CSUCCERMPC app.
 
 ## Database Migrations
 
-Run these SQL migrations in your Supabase dashboard (SQL Editor) in order:
+**Do not replay migrations 001–007 against the linked production project.** Its
+remote migration ledger is inconsistent with its existing schema and account
+data. In particular, migration 005 contains email-based account linking.
+`db push`, `migration up`, and marking historical migrations applied are not
+approved deployment steps.
 
-1. **001_initial_schema.sql** - Creates the core database tables (members, loan_applications, loan_payments, savings_accounts)
-2. **002_rls_policies.sql** - Sets up Row Level Security policies for data protection
-3. **003_database_functions.sql** - Creates database functions for business logic (loan eligibility, approval processing, credit score updates)
-4. **004_notifications_table.sql** - Creates the notifications table and RLS policies
-5. **005_shared_admin_and_app_fields.sql** - Adds member fields, admin-role RLS policies, account linking, and realtime loan updates
+The proposed forward-only account reconciliation remains subject to final
+review and approval. Follow
+[ALL_ACCOUNTS_DEPLOYMENT_RUNBOOK.md](./ALL_ACCOUNTS_DEPLOYMENT_RUNBOOK.md) for
+the required backup, current read-only preflight, controlled SQL execution,
+Edge Function cutover, and tests. Do not execute SQL from this README.
 
-### How to Apply Migrations
+## Super Admin Portal Authentication
 
-1. Go to your Supabase dashboard: https://supabase.com/dashboard/project/jhgsqvxlvwhrwpcekvpq
-2. Navigate to SQL Editor
-3. Open each migration file and run it in order (001, then 002, then 003, then 004)
+The admin website uses Supabase Auth. Configure these public values in
+`coop_frontend_admin/.env.local`:
+
+```text
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=your-supabase-publishable-key
+```
+
+Grant existing Super Admin users the `super_admin` value in server-controlled
+`app_metadata.role` using a trusted Supabase administrative process. Do not set
+authorization roles through client-editable user metadata. The portal rejects
+accounts without this role.
+
+The shared login redirects users with trusted `app_metadata.role` values of
+`super_admin` to `/super-admin/dashboard` and `admin` to `/admin/dashboard`.
+The existing `coop_admin` role remains accepted as an Admin alias. Admin pages
+are read-only until permissions are confirmed; protected account and loan writes
+remain Super Admin-only on the server. Assign Admin roles only through a trusted
+Supabase administrative process. The Admin role must never be put in
+`user_metadata`.
+
+Create Auth users under **Authentication → Users** and set or reset their
+password there; SQL role assignment does not create a user or set a password.
+For a new Admin user, update `auth.users.raw_app_meta_data` to include
+`{"role":"admin"}`. Existing `coop_admin` metadata continues to work as an
+Admin role.
+
+Deploy `list-admin-accounts`, `secure-admin-action`, `loan-approval`, and `loan-release` from the
+`supabase/functions` directory. The loan approval/release functions require a
+matching, unexpired, single-use grant. Configure `SUPABASE_URL`,
+`SUPABASE_PUBLISHABLE_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` as Edge Function
+secrets. Existing projects may continue to use `SUPABASE_ANON_KEY` instead.
+The service role key must never be placed in the admin website. The Express
+loan-status endpoint also requires these values server-side.
+
+`list-admin-accounts` allows active callers with trusted `app_metadata.role`
+values of `super_admin`, `admin`, or `coop_admin` to read accounts. It uses the
+server-side service role to join Auth users with
+`public.members` by Auth user ID. It returns unlinked records as integrity
+issues and does not fabricate missing profile data. It requires the reviewed
+account reconciliation schema and secure-action functions; do not assume the
+remote project has them until deployment has been verified.
+
+Account listing is read-only. Protected account modifications continue to
+require a Super Admin through `secure-admin-action`.
+
+Grants are bound to the authenticated Super Admin, action, target ID, and a
+request fingerprint that includes non-secret action data and a keyed digest of
+temporary credentials where applicable. Grants expire after 120 seconds and
+are consumed atomically once. Failed password verification is limited to five
+attempts per 15 minutes.
 
 ## Edge Functions
 
 Edge Functions are serverless functions for sensitive business logic:
 
+- **secure-admin-action**: Reauthenticates Super Admins, issues and consumes action grants, provisions accounts, and performs protected account and loan operations
 - **loan-approval**: Processes loan approval logic
 - **loan-eligibility**: Checks if a member is eligible for a loan
 - **loan-release**: Releases approved loans
 - **notifications**: Sends notifications to users
 
-### How to Deploy Edge Functions
+### Edge Function Deployment
 
-Install Supabase CLI:
-```bash
-npm install -g supabase
-```
+Do not deploy functions as part of local validation. The approved All Accounts
+cutover deploys only `list-admin-accounts` and `secure-admin-action`, with JWT
+verification enabled. See
+[ALL_ACCOUNTS_DEPLOYMENT_RUNBOOK.md](./ALL_ACCOUNTS_DEPLOYMENT_RUNBOOK.md) for
+the project-scoped commands and required environment variable names. Do not
+deploy all functions, use `--no-verify-jwt`, or change project secrets as part
+of this procedure.
 
-Login to Supabase:
-```bash
-supabase login
-```
+The Super Admin create-account action intentionally omits `members.member_id`
+so the existing database trigger and sequence assign the readable Account ID;
+do not recreate the sequence or trigger. Review and apply
+`009_member_account_field_guards.sql` through the approved schema process to
+prevent authenticated users from changing that ID or ordinary members from
+changing membership classification. This guard does not replace or modify
+RLS policies. Migration `010_membership_type_labels.sql` normalizes legacy
+lowercase membership values to `Regular` and `Associate` and updates the
+existing membership constraint; inspect its preflight check before applying
+it. Migration `011_account_id_preview.sql` adds a service-role-only RPC that
+reads `account_id_sequence.last_value` and `is_called` without advancing the
+sequence. The `secure-admin-action` Edge Function exposes this only after
+verifying an active Super Admin. The displayed value is only a preview; the
+existing insert trigger assigns the definitive ID. Apply schema changes only
+after completing the account/schema preflight in the deployment runbook.
+Deploy the updated Edge Function after the database migrations are approved
+and applied.
 
-Link to your project:
-```bash
-supabase link --project-ref jhgsqvxlvwhrwpcekvpq
-```
-
-Deploy all edge functions:
-```bash
-supabase functions deploy loan-approval
-supabase functions deploy loan-eligibility
-supabase functions deploy loan-release
-supabase functions deploy notifications
-```
-
-Set environment variables for edge functions:
-```bash
-supabase secrets set SUPABASE_URL=<your-project-url>
-supabase secrets set SUPABASE_SERVICE_ROLE_KEY=<set-this-secret-in-your-terminal>
-```
+`secure-admin-action` CORS is restricted to exact origins configured in the
+server-side `COOP_ADMIN_ALLOWED_ORIGINS` Edge Function secret. Include
+the frontend origin(s), for example `http://localhost:3000` for local
+development and the exact deployed admin origin; do not use `*`. The function
+allows only `POST`/`OPTIONS` and known Supabase SDK request headers. Deploy
+with JWT verification left enabled, then validate the OPTIONS preflight and an
+authenticated preview request against the same project used by the frontend.
 
 ## Database Functions
 
@@ -107,6 +165,55 @@ Create storage buckets in Supabase:
 
 ## Flutter Integration
 
+The Flutter member client signs in with its complete Member ID and password
+through `member-auth`. Login supports `CSUCC-YYYY-NNNN` and existing `YYYY-NNNN`
+IDs. The function validates passwords using Supabase Auth and only returns a
+session for an active, linked member account. It never publishes an ID-to-email
+directory. First-login password changes clear `members.must_change_password`
+only after the password update succeeds.
+
+`member-auth` is an unauthenticated login endpoint, so its gateway JWT check is
+disabled specifically in `config.toml`. Its password-change mode verifies the
+member's JWT explicitly. The admin functions retain gateway JWT verification.
+Deploy this endpoint from `coop_backend` using:
+
+```powershell
+npx --yes supabase@2.120.0 functions deploy member-auth --project-ref jhgsqvxlvwhrwpcekvpq --use-api
+```
+
+For loan email verification, configure **Authentication → Email Templates →
+Magic Link** in the hosted project's Dashboard. The default template sends a
+sign-in link, not an OTP. Set the subject to `Your CSUCC loan verification code`
+and paste `coop_frontend_client/supabase/templates/magic_link_otp.html` as the
+body; it includes Supabase's `{{ .Token }}` placeholder. The live Auth config
+uses an 8-digit OTP, and Flutter accepts 8 digits. Save the Dashboard template
+and test using a real linked member email. Local `config.toml` template settings
+do not update a hosted project's email template.
+
+Migration 015 installs a server-only five-attempt/15-minute login limiter.
+Migration 016 restores member app read access under the existing RLS policies
+and limits member loan submissions to their own pending applications after
+temporary-password setup. Review these forward-only files when configuring
+another Supabase project; do not replay historical migrations on this project.
+
+Migration 017 creates the private `loan-documents` storage bucket, document
+metadata table, own-account-only RLS policies, a server-verified atomic
+loan-and-document submission RPC, and removes the direct client loan insert
+grant. Migration 018 grants active Admin/Coop Admin/Super Admin loan-review
+read access required by the admin Documents modal. These forward migrations
+have been applied to the linked production project.
+
+Migrations 019–020 add persistent loan policy settings with Super-Admin-only
+updates and an audit trail. The live calculator reads the saved base interest,
+processing/service fees, and amount bounds; loan submission rechecks amount,
+membership tenure, collateral threshold, and repayment tenure in the database.
+Migration 022 removes direct browser update privileges: policy changes must be
+reauthenticated and confirmed through the `update-loan-policy` secure action.
+Migration 025 prevents a member from having more than one in-progress loan
+application or loan of the same type. It preserves pre-existing records and
+does not prevent reapplying after a previous application is rejected or a loan
+is completed.
+
 The Flutter app has been configured with:
 - `supabase_flutter` dependency
 - Environment variables in `.env` file
@@ -134,12 +241,8 @@ final eligibility = await supabase.rpc('check_loan_eligibility', params: {
   'p_amount': 50000
 });
 
-// Call edge functions
-final response = await supabase.functions.invoke('loan-approval', body: {
-  'application_id': 'LA-2025-0089',
-  'approved_by': userId,
-  'notes': 'Approved'
-});
+// Sensitive admin Edge Functions also require a grant issued after password
+// reauthentication. Direct calls without a matching grant are rejected.
 ```
 
 ## Security Notes

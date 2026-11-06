@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS members (
   email VARCHAR(100) UNIQUE,
   phone VARCHAR(20),
   address TEXT,
+  membership_type ENUM('regular', 'associate') NULL DEFAULT NULL,
   date_joined DATE,
   status ENUM('active', 'inactive', 'suspended') DEFAULT 'active',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -56,19 +57,3 @@ CREATE TABLE IF NOT EXISTS savings_accounts (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT fk_savings_accounts_member FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE
 );
-
-INSERT INTO members (member_id, first_name, last_name, email, phone, address) VALUES
-('M-001', 'Juan', 'dela Cruz', 'juan@example.com', '09171234567', '123 Main St, Manila'),
-('M-002', 'Rosa', 'Mendoza', 'rosa@example.com', '09181234567', '456 Oak Ave, Quezon City'),
-('M-003', 'Carlo', 'Reyes', 'carlo@example.com', '09191234567', '789 Pine Rd, Makati'),
-('M-004', 'Ana', 'Torres', 'ana@example.com', '09201234567', '321 Elm St, Pasig'),
-('M-005', 'Pedro', 'Santos', 'pedro@example.com', '09211234567', '654 Maple Dr, Taguig')
-ON DUPLICATE KEY UPDATE updated_at = CURRENT_TIMESTAMP;
-
-INSERT INTO loan_applications (application_id, member_id, member_name, loan_type, amount, purpose, status, income, credit_score, date_submitted) VALUES
-('LA-2025-0089', 1, 'Juan dela Cruz', 'Regular', 75000.00, 'Business expansion', 'pending', 120000, 750, '2025-07-25'),
-('LA-2025-0088', 2, 'Rosa Mendoza', 'Medical', 30000.00, 'Medical emergency', 'under review', 95000, 720, '2025-07-24'),
-('LA-2025-0087', 3, 'Carlo Reyes', 'Educational', 50000.00, 'Tuition fee payment', 'approved', 150000, 780, '2025-07-23'),
-('LA-2025-0086', 4, 'Ana Torres', 'Emergency', 20000.00, 'Personal emergency', 'rejected', 60000, 650, '2025-07-22'),
-('LA-2025-0085', 5, 'Pedro Santos', 'Regular', 80000.00, 'Home renovation', 'released', 180000, 800, '2025-07-21')
-ON DUPLICATE KEY UPDATE updated_at = CURRENT_TIMESTAMP;

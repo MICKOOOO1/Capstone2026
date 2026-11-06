@@ -7,7 +7,7 @@ import ActionButtons from "./ActionButtons";
 export default function ReportGeneratorCard() {
   const [reportType, setReportType] = useState("Loan Summary");
   const [period, setPeriod] = useState("Daily");
-  const [date, setDate] = useState("July 2025");
+  const [date, setDate] = useState("");
 
   return (
     <div className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] border border-[#E5E7EB] p-4">

@@ -6,7 +6,7 @@ Express + MySQL API used by both the member app and the admin website.
 
 1. Copy `.env.example` to `.env` and update the MySQL credentials if needed.
 2. Install dependencies with `npm install`.
-3. Create and seed the database with `npm run init-db`.
+3. Create the database tables with `npm run init-db`.
 4. Start the API with `npm run dev`.
 
 The API runs at `http://localhost:5000` by default.

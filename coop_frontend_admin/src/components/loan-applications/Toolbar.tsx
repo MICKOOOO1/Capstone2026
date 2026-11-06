@@ -2,6 +2,10 @@
 
 import { Download, Search } from "lucide-react";
 import { LoanApplication } from "@/lib/api";
+import {
+  MembershipTypeFilter,
+  membershipTypeFilterOptions,
+} from "@/lib/membership";
 
 type LoanStatusFilter = "All Status" | LoanApplication["status"];
 type LoanSortOption = "Newest" | "Oldest";
@@ -11,6 +15,7 @@ interface ToolbarProps {
   memberIdValue: string;
   loanTypeFilter: string;
   statusFilter: LoanStatusFilter;
+  membershipTypeFilter: MembershipTypeFilter;
   sortOption: LoanSortOption;
   pageSize: number;
   loanTypeOptions: string[];
@@ -19,6 +24,7 @@ interface ToolbarProps {
   onApplyFilters: () => void;
   onLoanTypeChange: (value: string) => void;
   onStatusFilterChange: (value: LoanStatusFilter) => void;
+  onMembershipTypeChange: (value: MembershipTypeFilter) => void;
   onSortChange: (value: LoanSortOption) => void;
   onPageSizeChange: (value: number) => void;
   onExport: () => void;
@@ -36,9 +42,6 @@ const statusOptions: LoanStatusFilter[] = [
   "Under Review",
   "Approved",
   "Rejected",
-  "Released",
-  "Completed",
-  "Overdue",
 ];
 
 export default function Toolbar({
@@ -46,6 +49,7 @@ export default function Toolbar({
   memberIdValue,
   loanTypeFilter,
   statusFilter,
+  membershipTypeFilter,
   sortOption,
   pageSize,
   loanTypeOptions,
@@ -54,6 +58,7 @@ export default function Toolbar({
   onApplyFilters,
   onLoanTypeChange,
   onStatusFilterChange,
+  onMembershipTypeChange,
   onSortChange,
   onPageSizeChange,
   onExport,
@@ -132,6 +137,22 @@ export default function Toolbar({
             {statusOptions.map((status) => (
               <option key={status} value={status}>
                 {status}
+              </option>
+            ))}
+          </select>
+          <select
+            value={membershipTypeFilter}
+            onChange={(event) =>
+              onMembershipTypeChange(
+                event.target.value as MembershipTypeFilter
+              )
+            }
+            className={`${selectBase} w-[170px]`}
+            aria-label="Filter by membership type"
+          >
+            {membershipTypeFilterOptions.map((membershipType) => (
+              <option key={membershipType} value={membershipType}>
+                {membershipType}
               </option>
             ))}
           </select>
