@@ -1,11 +1,16 @@
 "use client";
 
 import SendNotificationCard from "@/components/notifications/SendNotificationCard";
+import NotificationHistoryCard from "@/components/notifications/NotificationHistoryCard";
+import { notificationHistory } from "@/components/notifications/NotificationHistoryData";
+import { useState } from "react";
 
 export default function NotificationsPage() {
+  const [historyVersion, setHistoryVersion] = useState(0);
   return (
-    <div className="w-full max-w-[780px]">
-      <SendNotificationCard />
+    <div className="min-w-0 space-y-5 text-[#17212F]">
+      <SendNotificationCard onRequestCompleted={() => setHistoryVersion((value) => value + 1)} />
+      <NotificationHistoryCard key={historyVersion} history={notificationHistory} />
     </div>
   );
 }

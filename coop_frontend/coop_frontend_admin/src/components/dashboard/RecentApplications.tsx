@@ -1,119 +1,81 @@
 "use client";
 
-interface Application {
-  id: string;
-  member: string;
-  type: string;
-  amount: string;
-  status: "Pending" | "Approved" | "Rejected";
-  date: string;
-}
+import { actionButtonStyles } from "@/components/shared/actionButtonStyles";
+import { useState } from "react";
+import LoanDetailsModal from "../loan-applications/LoanDetailsModal";
+import Link from "next/link";
+import { ArrowRight, FileText, RefreshCw } from "lucide-react";
+import { formatPeso, formatSubmissionDate, type DashboardLoan } from "./dashboard-model";
 
-const applications: Application[] = [
-  {
-    id: "LA-2025-0089",
-    member: "Juan dela Cruz",
-    type: "Regular",
-    amount: "₱75,000.00",
-    status: "Pending",
-    date: "Jul 25, 2025",
-  },
-  {
-    id: "LA-2025-0088",
-    member: "Maria Santos",
-    type: "Educational",
-    amount: "₱50,000.00",
-    status: "Approved",
-    date: "Jul 25, 2025",
-  },
-  {
-    id: "LA-2025-0087",
-    member: "Carlos Reyes",
-    type: "Medical",
-    amount: "₱30,000.00",
-    status: "Pending",
-    date: "Jul 24, 2025",
-  },
-  {
-    id: "LA-2025-0086",
-    member: "Ana Garcia",
-    type: "Emergency",
-    amount: "₱20,000.00",
-    status: "Rejected",
-    date: "Jul 24, 2025",
-  },
-];
-
-const statusStyles = {
-  Pending: "bg-[#FFF7E8] text-[#F59E0B] border-[#FED7AA]",
-  Approved: "bg-[#EAFBF1] text-[#10B981] border-[#A7F3D0]",
-  Rejected: "bg-[#FDEEEE] text-[#EF4444] border-[#FECACA]",
+const statusStyles: Record<DashboardLoan["status"], string> = {
+  Pending: "border-amber-200 bg-amber-50 text-amber-700",
+  "Under Review": "border-blue-200 bg-blue-50 text-blue-700",
+  Approved: "border-green-200 bg-green-50 text-green-700",
+  Rejected: "border-red-200 bg-red-50 text-red-700",
+  Released: "border-teal-200 bg-teal-50 text-teal-700",
+  Completed: "border-slate-200 bg-slate-50 text-slate-600",
+  Overdue: "border-red-200 bg-red-50 text-red-700",
 };
 
-export default function RecentApplications() {
-  return (
-    <div className="bg-white rounded-[14px] p-3 shadow-[0_1px_3px_rgba(0,0,0,0.04)] border border-[#ECECEC]">
-      <div className="flex items-center justify-between mb-2">
-        <div>
-          <h2 className="text-[14px] font-semibold text-[#0F172A]">Recent Applications</h2>
-        </div>
-        <a href="#" className="text-[11px] text-[#1A5E38] font-medium hover:underline">
-          View All
-        </a>
-      </div>
+interface RecentApplicationsProps {
+  applications?: DashboardLoan[];
+  loading?: boolean;
+  error?: string | null;
+  applicationsHref?: string;
+  onRetry?: () => void;
+}
 
-      <div className="overflow-x-auto">
-        <table className="w-full" style={{ tableLayout: "fixed" }}>
-          <colgroup>
-            <col style={{ width: "30%" }} />
-            <col style={{ width: "14%" }} />
-            <col style={{ width: "23%" }} />
-            <col style={{ width: "18%" }} />
-            <col style={{ width: "15%" }} />
-          </colgroup>
-          <thead>
-            <tr className="bg-[#F8FAFC]">
-              <th className="text-left py-2 px-5 text-[10px] font-semibold uppercase text-[#64748B] tracking-wider">
-                ID / Member
-              </th>
-              <th className="text-left py-2 px-5 text-[10px] font-semibold uppercase text-[#64748B] tracking-wider">
-                Type
-              </th>
-              <th className="text-right py-2 px-5 text-[10px] font-semibold uppercase text-[#64748B] tracking-wider">
-                Amount
-              </th>
-              <th className="text-left py-2 px-5 text-[10px] font-semibold uppercase text-[#64748B] tracking-wider">
-                Status
-              </th>
-              <th className="text-right py-2 px-5 text-[10px] font-semibold uppercase text-[#64748B] tracking-wider">
-                Date
-              </th>
-            </tr>
+export default function RecentApplications({
+  applications = [], loading = false, error, applicationsHref = "/loan-applications", onRetry,
+}: RecentApplicationsProps) {
+  const [detailId, setDetailId] = useState<string | null>(null);
+  return (
+    <section aria-labelledby="recent-applications-heading" aria-busy={loading} className="min-w-0 overflow-hidden rounded-[14px] border border-[#E2E8F0] bg-white shadow-[0_2px_6px_rgba(15,23,42,0.025)]">
+      {detailId && <LoanDetailsModal applicationId={detailId} onClose={() => setDetailId(null)} />}
+      <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+        <div>
+          <h2 id="recent-applications-heading" className="text-base font-semibold text-[#17212F]">Recent Loan Applications</h2>
+          <p className="mt-1 text-xs leading-5 text-[#64748B]">The five most recently submitted applications</p>
+        </div>
+        <Link href={applicationsHref} className={actionButtonStyles()}>View All<ArrowRight className="h-3.5 w-3.5" aria-hidden="true" /></Link>
+      </div>
+      <div className="overflow-x-auto" role="region" aria-label="Recent loan applications table" tabIndex={0}>
+        <table className="w-full min-w-[960px] text-left text-[13px]">
+          <caption className="sr-only">Five most recent loan applications, sorted by submission date, newest first</caption>
+          <thead className="border-y border-[#E2E8F0] bg-[#F8FAFC] text-[10px] font-semibold uppercase tracking-[0.06em] text-[#64748B]">
+            <tr>{["Application ID", "Member Name", "Loan Type", "Requested Amount", "Date Submitted", "Status", "Action"].map((heading) => <th key={heading} scope="col" className={`whitespace-nowrap px-5 py-3 ${heading === "Requested Amount" ? "text-right" : ""}`}>{heading}</th>)}</tr>
           </thead>
-          <tbody>
-            {applications.map((app) => (
-              <tr key={app.id} className="border-b border-[#F1F5F9] hover:bg-[#F8FAFC] transition-colors">
-                <td className="py-2.5 px-5">
-                  <div className="flex flex-col gap-0.5">
-                    <p className="text-[10px] font-bold text-[#1A5E38]">{app.id}</p>
-                    <p className="text-[12px] font-semibold text-[#0F172A]">{app.member}</p>
-                  </div>
-                </td>
-                <td className="py-2.5 px-5 text-[11px] text-[#64748B]">{app.type}</td>
-                <td className="py-2.5 px-5 text-[12px] font-semibold text-[#0F172A] text-right">{app.amount}</td>
-                <td className="py-2.5 px-5">
-                  <span
-                    className={`inline-flex items-center px-2 py-1 rounded-full text-[10px] font-medium border ${statusStyles[app.status]}`}
-                  >
-                    {app.status}
-                  </span>
-                </td>
-                <td className="py-2.5 px-5 text-[11px] text-[#64748B] text-right">{app.date}</td>
+          <tbody className="divide-y divide-[#F1F5F9]">
+            {loading ? Array.from({ length: 5 }, (_, index) => (
+              <tr key={index} aria-hidden="true">{Array.from({ length: 7 }, (_, column) => <td key={column} className="px-5 py-4"><div className="h-4 w-full animate-pulse rounded bg-slate-100 motion-reduce:animate-none" /></td>)}</tr>
+            )) : error ? (
+              <tr><td colSpan={7} className="px-5 py-8 text-center">
+                <p role="alert" className="text-sm font-semibold text-[#17212F]">Unable to load recent applications</p>
+                <p className="mt-2 text-sm text-[#64748B]">{error}</p>
+                {onRetry && <button type="button" onClick={onRetry} className="mt-4 inline-flex items-center gap-2 rounded-lg border border-[#E2E8F0] px-3 py-2 text-xs font-semibold text-[#145B3C] hover:bg-slate-50"><RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />Retry</button>}
+              </td></tr>
+            ) : applications.length === 0 ? (
+              <tr><td colSpan={7} className="px-5 py-8 text-center">
+                <FileText className="mx-auto mb-3 h-6 w-6 text-slate-400" aria-hidden="true" />
+                <p className="text-sm font-semibold text-[#17212F]">No loan applications found</p>
+                <p className="mt-2 text-sm text-[#64748B]">Recent loan applications will appear here once members submit their requests.</p>
+              </td></tr>
+            ) : applications.map((application) => (
+              <tr key={application.id} className="transition-colors hover:bg-[#F8FAFC]">
+                <td className="whitespace-nowrap px-5 py-3 font-semibold text-[#145B3C]">{application.id}</td>
+                <td className="px-5 py-3"><p className="max-w-48 truncate font-medium text-[#17212F]" title={application.member}>{application.member}</p>{application.memberId && <p className="mt-1 text-[11px] text-[#64748B]">{application.memberId}</p>}</td>
+                <td className="whitespace-nowrap px-5 py-3 text-[#64748B]">{application.type}</td>
+                <td className="whitespace-nowrap px-5 py-3 text-right font-semibold text-[#17212F] tabular-nums">{formatPeso(application.amount)}</td>
+                <td className="whitespace-nowrap px-5 py-3 text-[#64748B]">{formatSubmissionDate(application.submittedAt)}</td>
+                <td className="whitespace-nowrap px-5 py-3"><span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-medium ${statusStyles[application.status]}`}>{application.status}</span></td>
+                <td className="whitespace-nowrap px-5 py-3"><button type="button" onClick={() => setDetailId(application.id)} className={actionButtonStyles()}>View Details</button></td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-    </div>
+      {loading && <p role="status" className="sr-only">Loading recent loan applications</p>}
+      {!loading && !error && applications.length > 0 && <p className="border-t border-[#F1F5F9] px-5 py-2 text-[11px] leading-5 text-[#64748B]">Application details are not yet available. Use View All to open the existing loan applications page.</p>}
+    </section>
   );
 }

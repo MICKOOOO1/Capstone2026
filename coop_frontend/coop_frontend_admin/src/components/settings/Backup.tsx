@@ -15,12 +15,7 @@ export default function Backup() {
   const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [selectedBackup, setSelectedBackup] = useState<BackupRecord | null>(null);
 
-  const [backups] = useState<BackupRecord[]>([
-    { id: "1", date: "Jul 24, 2025", time: "2:00 AM", size: "48.2 MB", type: "Auto" },
-    { id: "2", date: "Jul 23, 2025", time: "2:00 AM", size: "47.9 MB", type: "Auto" },
-    { id: "3", date: "Jul 22, 2025", time: "2:00 AM", size: "47.5 MB", type: "Auto" },
-    { id: "4", date: "Jul 20, 2025", time: "10:15 AM", size: "47.1 MB", type: "Manual" },
-  ]);
+  const [backups] = useState<BackupRecord[]>([]);
 
   const handleBackupNow = () => {
     console.log("Starting database backup");
@@ -52,8 +47,8 @@ export default function Backup() {
         {/* Last Backup Card */}
         <div className="bg-[#ECFDF5] border border-[#BBF7D0] rounded-[14px] p-[18px] mb-5">
           <p className="text-[11px] font-bold text-[#166534] uppercase mb-1">LAST BACKUP</p>
-          <p className="text-[18px] font-bold text-[#1F2937] mb-1">Jul 24, 2025 at 2:00 AM</p>
-          <p className="text-[13px] text-[#6B7280]">Size: 48.2 MB · Automatic backup</p>
+          <p className="text-[18px] font-bold text-[#1F2937] mb-1">Not loaded</p>
+          <p className="text-[13px] text-[#6B7280]">No backup data loaded.</p>
         </div>
 
         {/* Action Buttons */}

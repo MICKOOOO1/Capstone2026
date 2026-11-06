@@ -3,6 +3,10 @@ import 'package:intl/intl.dart';
 import 'app_theme.dart';
 import 'loan_calculator_service.dart';
 import 'documents_disbursement_screen.dart';
+import 'models/loan_policy.dart';
+import 'services/database_service.dart';
+import 'application_state.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class LoanCalculatorScreen extends StatefulWidget {
   final LoanType? initialLoanType;
@@ -18,20 +22,112 @@ class _LoanCalculatorScreenState extends State<LoanCalculatorScreen> {
   double _loanAmount = 50000.0;
   int _selectedTenure = 12;
   late LoanComputation _computation;
+  LoanPolicySettings? _policy;
+  bool _policyLoading = true;
+  String? _policyError;
 
   @override
   void initState() {
     super.initState();
     _selectedLoanType = widget.initialLoanType ?? LoanEligibility.defaultType;
-    _updateComputation();
+    _computation = _calculateWith(
+      const LoanPolicySettings(
+        baseInterestRatePercent: 1.5,
+        processingFeePercent: 1,
+        serviceFeePercent: 0.5,
+        minMemberTenureMonths: 6,
+        minLoanAmount: 1000,
+        maxLoanAmount: 500000,
+        maxLoanMultiplier: 3,
+        penaltyRatePercent: 2,
+        coMakerRequiredAbove: 50000,
+        collateralRequiredAbove: 200000,
+        loanProcessingTime: '3–5',
+      ),
+    );
+    _loadLoanPolicy();
   }
+
+  Future<void> _loadLoanPolicy() async {
+    setState(() {
+      _policyLoading = true;
+      _policyError = null;
+    });
+    try {
+      final policy = await DatabaseService().getLoanPolicySettings();
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) {
+        throw StateError('Sign in to view current loan policies.');
+      }
+      final member = await DatabaseService().getMember(user.id);
+      final joinedValue = member['date_joined'];
+      final joined = joinedValue is String
+          ? DateTime.tryParse(joinedValue)
+          : null;
+      if (joined == null) {
+        throw StateError(
+          'Unable to verify your membership date. Contact the cooperative admin.',
+        );
+      }
+      final monthsAsMember =
+          (DateTime.now().year - joined.year) * 12 +
+          DateTime.now().month -
+          joined.month -
+          (DateTime.now().day < joined.day ? 1 : 0);
+      if (monthsAsMember < policy.minMemberTenureMonths) {
+        throw StateError(
+          'Current loan policy requires at least ${policy.minMemberTenureMonths} months of membership. Your account does not meet this requirement yet.',
+        );
+      }
+      ApplicationState.loanProcessingTime = policy.loanProcessingTime;
+      setState(() {
+        _policy = policy;
+        _loanAmount = _loanAmount
+            .clamp(policy.minLoanAmount, policy.maxLoanAmount)
+            .toDouble();
+        _computation = _calculateWith(policy);
+        _policyLoading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _policyError = error is StateError
+            ? error.message
+            : 'Unable to load current loan policy. Check your connection and retry.';
+        _policyLoading = false;
+      });
+    }
+  }
+
+  LoanComputation _calculateWith(LoanPolicySettings policy) =>
+      LoanCalculatorService().calculate(
+        principal: _loanAmount
+            .clamp(policy.minLoanAmount, policy.maxLoanAmount)
+            .toDouble(),
+        months: _selectedTenure,
+        loanType: _selectedLoanType,
+        baseInterestRatePercent: policy.baseInterestRatePercent,
+        processingFeePercent: policy.processingFeePercent,
+        serviceFeePercent: policy.serviceFeePercent,
+      );
 
   void _updateComputation() {
     setState(() {
-      _computation = LoanCalculatorService().calculate(
-        principal: _loanAmount,
-        months: _selectedTenure,
-        loanType: _selectedLoanType,
+      _computation = _calculateWith(
+        _policy ??
+            const LoanPolicySettings(
+              baseInterestRatePercent: 1.5,
+              processingFeePercent: 1,
+              serviceFeePercent: 0.5,
+              minMemberTenureMonths: 6,
+              minLoanAmount: 1000,
+              maxLoanAmount: 500000,
+              maxLoanMultiplier: 3,
+              penaltyRatePercent: 2,
+              coMakerRequiredAbove: 50000,
+              collateralRequiredAbove: 200000,
+              loanProcessingTime: '3–5',
+            ),
       );
     });
   }
@@ -47,61 +143,93 @@ class _LoanCalculatorScreenState extends State<LoanCalculatorScreen> {
           padding: const EdgeInsets.all(AppTheme.spacingL),
           child: Column(
             children: [
-              const LoanProgressIndicator(currentStep: 0),
-              const SizedBox(height: AppTheme.spacingL),
-              LoanTypeDropdown(
-                selectedType: _selectedLoanType,
-                onChanged: (type) {
-                  setState(() {
-                    _selectedLoanType = type;
-                    _updateComputation();
-                  });
-                },
-              ),
-              const SizedBox(height: AppTheme.spacingL),
-              LoanAmountSlider(
-                amount: _loanAmount,
-                onChanged: (value) {
-                  setState(() {
-                    _loanAmount = value;
-                    _updateComputation();
-                  });
-                },
-              ),
-              const SizedBox(height: AppTheme.spacingL),
-              TenureSelector(
-                selectedTenure: _selectedTenure,
-                onChanged: (tenure) {
-                  setState(() {
-                    _selectedTenure = tenure;
-                    _updateComputation();
-                  });
-                },
-              ),
-              const SizedBox(height: AppTheme.spacingL),
-              LiveBreakdownCard(computation: _computation),
-              const SizedBox(height: AppTheme.spacingL),
-              PaymentScheduleCard(
-                computation: _computation,
-                months: _selectedTenure,
-              ),
-              const SizedBox(height: AppTheme.spacingXL),
-              PrimaryButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => DocumentsDisbursementScreen(
-                        loanAmount: _loanAmount,
-                        loanType: _selectedLoanType,
-                        tenure: _selectedTenure,
-                        computation: _computation,
-                      ),
+              if (_policyLoading)
+                const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: CircularProgressIndicator(),
+                ),
+              if (_policyError != null)
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      children: [
+                        Text(
+                          _policyError!,
+                          style: const TextStyle(color: Colors.red),
+                          textAlign: TextAlign.center,
+                        ),
+                        TextButton(
+                          onPressed: _loadLoanPolicy,
+                          child: const Text('Retry'),
+                        ),
+                      ],
                     ),
-                  );
-                },
-              ),
-              const SizedBox(height: AppTheme.spacingXL),
+                  ),
+                ),
+              if (_policy != null && _policyError == null) ...[
+                const LoanProgressIndicator(currentStep: 0),
+                const SizedBox(height: AppTheme.spacingL),
+                LoanTypeDropdown(
+                  selectedType: _selectedLoanType,
+                  onChanged: (type) {
+                    setState(() {
+                      _selectedLoanType = type;
+                      _updateComputation();
+                    });
+                  },
+                ),
+                const SizedBox(height: AppTheme.spacingL),
+                LoanAmountSlider(
+                  amount: _loanAmount,
+                  minimum: _policy!.minLoanAmount,
+                  maximum: _policy!.maxLoanAmount,
+                  onChanged: (value) {
+                    setState(() {
+                      _loanAmount = value
+                          .clamp(_policy!.minLoanAmount, _policy!.maxLoanAmount)
+                          .toDouble();
+                      _updateComputation();
+                    });
+                  },
+                ),
+                const SizedBox(height: AppTheme.spacingL),
+                TenureSelector(
+                  selectedTenure: _selectedTenure,
+                  onChanged: (tenure) {
+                    setState(() {
+                      _selectedTenure = tenure;
+                      _updateComputation();
+                    });
+                  },
+                ),
+                const SizedBox(height: AppTheme.spacingL),
+                LiveBreakdownCard(computation: _computation),
+                const SizedBox(height: AppTheme.spacingL),
+                PaymentScheduleCard(
+                  computation: _computation,
+                  months: _selectedTenure,
+                ),
+                const SizedBox(height: AppTheme.spacingXL),
+                PrimaryButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => DocumentsDisbursementScreen(
+                          loanAmount: _loanAmount,
+                          loanType: _selectedLoanType,
+                          tenure: _selectedTenure,
+                          computation: _computation,
+                          collateralRequiredAbove:
+                              _policy!.collateralRequiredAbove,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: AppTheme.spacingXL),
+              ],
             ],
           ),
         ),
@@ -305,11 +433,15 @@ class LoanTypeDropdown extends StatelessWidget {
 
 class LoanAmountSlider extends StatefulWidget {
   final double amount;
+  final double minimum;
+  final double maximum;
   final ValueChanged<double> onChanged;
 
   const LoanAmountSlider({
     super.key,
     required this.amount,
+    this.minimum = LoanCalculatorService.minLoanAmount,
+    this.maximum = LoanCalculatorService.maxLoanAmount,
     required this.onChanged,
   });
 
@@ -406,8 +538,8 @@ class _LoanAmountSliderState extends State<LoanAmountSlider> {
                   final parsed = double.tryParse(value);
                   if (parsed != null) {
                     final clamped = parsed.clamp(
-                      LoanCalculatorService.minLoanAmount,
-                      LoanCalculatorService.maxLoanAmount,
+                      widget.minimum,
+                      widget.maximum,
                     );
                     widget.onChanged(clamped);
                   }
@@ -420,8 +552,8 @@ class _LoanAmountSliderState extends State<LoanAmountSlider> {
                     _controller.text = widget.amount.toStringAsFixed(0);
                   } else {
                     final clamped = parsed.clamp(
-                      LoanCalculatorService.minLoanAmount,
-                      LoanCalculatorService.maxLoanAmount,
+                      widget.minimum,
+                      widget.maximum,
                     );
                     _controller.text = clamped.toStringAsFixed(0);
                     if (clamped != widget.amount) {
@@ -433,9 +565,11 @@ class _LoanAmountSliderState extends State<LoanAmountSlider> {
               const SizedBox(height: AppTheme.spacingL),
               Slider(
                 value: widget.amount,
-                min: LoanCalculatorService.minLoanAmount,
-                max: LoanCalculatorService.maxLoanAmount,
-                divisions: 499,
+                min: widget.minimum,
+                max: widget.maximum,
+                divisions: ((widget.maximum - widget.minimum) / 1000)
+                    .round()
+                    .clamp(1, 1000),
                 activeColor: AppTheme.primaryGreen,
                 inactiveColor: const Color(0xFFE0E0E0),
                 onChanged: widget.onChanged,
@@ -445,9 +579,7 @@ class _LoanAmountSliderState extends State<LoanAmountSlider> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    LoanCalculatorService.formatCurrency(
-                      LoanCalculatorService.minLoanAmount,
-                    ),
+                    LoanCalculatorService.formatCurrency(widget.minimum),
                     style: const TextStyle(
                       color: Color(0xFF7D8A82),
                       fontSize: 12,
@@ -455,7 +587,7 @@ class _LoanAmountSliderState extends State<LoanAmountSlider> {
                     ),
                   ),
                   Text(
-                    '₱200K limit',
+                    'Maximum ${LoanCalculatorService.formatCurrency(widget.maximum)}',
                     style: const TextStyle(
                       color: AppTheme.accentGold,
                       fontSize: 12,
@@ -463,9 +595,7 @@ class _LoanAmountSliderState extends State<LoanAmountSlider> {
                     ),
                   ),
                   Text(
-                    LoanCalculatorService.formatCurrency(
-                      LoanCalculatorService.maxLoanAmount,
-                    ),
+                    LoanCalculatorService.formatCurrency(widget.maximum),
                     style: const TextStyle(
                       color: Color(0xFF7D8A82),
                       fontSize: 12,

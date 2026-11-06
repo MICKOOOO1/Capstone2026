@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'member_information_card.dart';
 import 'app_theme.dart';
 import 'loan_calculator_screen.dart';
 import 'loan_calculator_service.dart';
@@ -128,39 +129,7 @@ class ProfileInformationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(AppTheme.spacingL),
-      decoration: BoxDecoration(
-        color: AppTheme.cardWhite,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: AppTheme.cardShadow,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const ProfileInfoRow(label: 'FULL NAME', value: 'Maria Santos'),
-          const Divider(color: Color(0xFFE6E6E6), thickness: 1),
-          const ProfileInfoRow(label: 'BIRTHDATE', value: 'March 14, 1985'),
-          const Divider(color: Color(0xFFE6E6E6), thickness: 1),
-          const ProfileInfoRow(
-            label: 'CONTACT NUMBER',
-            value: '+63 917 456 7890',
-          ),
-          const Divider(color: Color(0xFFE6E6E6), thickness: 1),
-          const ProfileInfoRow(
-            label: 'INSTITUTIONAL EMAIL',
-            value: 'm.santos@csucc.edu.ph',
-          ),
-          const Divider(color: Color(0xFFE6E6E6), thickness: 1),
-          const ProfileInfoRow(
-            label: 'REGISTERED ADDRESS',
-            value: '123 Rizal St., Cabadbaran City, Agusan del Norte',
-          ),
-          const Divider(color: Color(0xFFE6E6E6), thickness: 1),
-          const ProfileInfoRow(label: 'MEMBER ID', value: 'CSUCC-2019-0042'),
-        ],
-      ),
-    );
+    return const LiveMemberInformationCard();
   }
 }
 

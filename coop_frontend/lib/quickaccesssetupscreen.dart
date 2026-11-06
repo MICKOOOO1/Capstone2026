@@ -1,409 +1,374 @@
 import 'package:flutter/material.dart';
-import 'package:local_auth/local_auth.dart';
 import 'dashboard.dart';
-import 'security/pin_security_service.dart';
-import 'security/secure_storage_service.dart';
+import 'security/quick_access_controller.dart';
+import 'security/quick_access_service.dart';
 
 class QuickAccessSetupScreen extends StatefulWidget {
-  const QuickAccessSetupScreen({super.key});
+  const QuickAccessSetupScreen({super.key, this.controller, this.onCompleted});
+  final QuickAccessController? controller;
+  final VoidCallback? onCompleted;
 
   @override
   State<QuickAccessSetupScreen> createState() => _QuickAccessSetupScreenState();
 }
 
 class _QuickAccessSetupScreenState extends State<QuickAccessSetupScreen> {
-  final LocalAuthentication _localAuth = LocalAuthentication();
-  final PinSecurityService _pinSecurity = PinSecurityService();
-  final SecureStorageService _secureStorage = SecureStorageService();
-  bool _isBiometricSelected = false;
+  static const _green = Color(0xFF1A5E38);
+  late final QuickAccessController _controller;
+  bool _biometricSelected = false;
+  bool _biometricsAvailable = false;
+  bool _checkingBiometrics = true;
+  bool _busy = false;
   String _pin = '';
-  bool _canCheckBiometrics = false;
-  List<BiometricType> _availableBiometrics = [];
+  String? _firstPin;
+  String? _error;
+
+  bool get _canSetup =>
+      _controller.hasSession &&
+      _controller.userId != null &&
+      !_controller.requiresPasswordChange;
 
   @override
   void initState() {
     super.initState();
-    _checkBiometricAvailability();
-    _loadBiometricPreference();
+    _controller = widget.controller ?? QuickAccessController.instance;
+    _loadSettings();
   }
 
-  Future<void> _loadBiometricPreference() async {
-    final enabled = await _secureStorage.read(
-      SecureStorageService.biometricEnabledKey,
-    );
-    if (mounted && enabled == 'true') {
+  Future<void> _loadSettings() async {
+    try {
+      final owner = _controller.userId;
+      final method = owner == null
+          ? QuickAccessMethod.none
+          : await _controller.service.methodFor(owner);
+      final available = await _controller.service.biometrics.isAvailable();
+      if (!mounted) return;
       setState(() {
-        _isBiometricSelected = true;
+        _biometricSelected = method == QuickAccessMethod.biometric;
+        _biometricsAvailable = available;
+        _checkingBiometrics = false;
+        if (!_canSetup) {
+          _error =
+              'Sign in and complete password setup before enabling quick access.';
+        }
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _checkingBiometrics = false;
+        _error = 'Unable to check quick-access settings. Please try again.';
       });
     }
   }
 
-  Future<void> _checkBiometricAvailability() async {
-    bool canCheck = await _localAuth.canCheckBiometrics;
-    List<BiometricType> available = await _localAuth.getAvailableBiometrics();
-
-    setState(() {
-      _canCheckBiometrics = canCheck;
-      _availableBiometrics = available;
-    });
+  Future<void> _finish() async {
+    await _controller.settingsChanged();
+    if (!mounted) return;
+    if (widget.onCompleted != null) {
+      widget.onCompleted!();
+    } else {
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const Dashboard()),
+        (_) => false,
+      );
+    }
   }
 
-  Future<void> _authenticateWithBiometrics() async {
+  Future<void> _skip() async {
+    if (_busy || !_canSetup) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
     try {
-      bool authenticated = await _localAuth.authenticate(
-        localizedReason: 'Please authenticate to set up biometric login',
-        options: const AuthenticationOptions(
-          stickyAuth: true,
-          biometricOnly: true,
-        ),
-      );
-
-      if (authenticated) {
-        await _secureStorage.write(
-          SecureStorageService.biometricEnabledKey,
-          'true',
-        );
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const Dashboard()),
+      await _controller.service.skip(_controller.userId!);
+      await _finish();
+    } catch (failure) {
+      if (mounted) {
+        setState(
+          () => _error = failure is StateError
+              ? failure.message
+              : 'Unable to skip quick-access setup. Please try again.',
         );
       }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Biometric authentication failed')),
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _enrollBiometrics() async {
+    if (_busy || !_canSetup || _checkingBiometrics) return;
+    setState(() {
+      _biometricSelected = true;
+      _busy = true;
+      _error = null;
+      _pin = '';
+      _firstPin = null;
+    });
+    try {
+      final enrolled = await _controller.service.enrollBiometrics(
+        _controller.userId!,
       );
+      if (enrolled) {
+        await _finish();
+      } else if (mounted) {
+        setState(
+          () => _error =
+              'Biometric setup was cancelled. Try again, choose PIN, or skip.',
+        );
+      }
+    } catch (failure) {
+      if (mounted) {
+        setState(
+          () => _error = failure is StateError
+              ? failure.message
+              : 'Biometric setup failed. Choose PIN or try again.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
   Future<void> _onNumberPressed(String number) async {
-    if (_pin.length < 4) {
+    if (_busy || !_canSetup || _pin.length >= 4) return;
+    setState(() {
+      _pin += number;
+      _error = null;
+    });
+    if (_pin.length != 4) return;
+    if (_firstPin == null) {
       setState(() {
-        _pin += number;
+        _firstPin = _pin;
+        _pin = '';
       });
-
-      if (_pin.length == 4) {
-        final pin = _pin;
-        final enrolled = await _pinSecurity.enrollPin(pin);
-        if (mounted) {
-          setState(() {
-            _pin = '';
-          });
-        }
-        if (!enrolled || !mounted) return;
-
-        Future.delayed(const Duration(milliseconds: 500), () {
-          if (!mounted) return;
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => const Dashboard()),
-          );
-        });
-      }
+      return;
     }
-  }
-
-  void _onBackPressed() {
-    if (_pin.isNotEmpty) {
+    if (_pin != _firstPin) {
       setState(() {
-        _pin = _pin.substring(0, _pin.length - 1);
+        _pin = '';
+        _firstPin = null;
+        _error = 'PINs do not match. Enter a new PIN and confirm it.';
       });
+      return;
+    }
+    final pin = _pin;
+    setState(() {
+      _busy = true;
+      _pin = '';
+      _firstPin = null;
+    });
+    try {
+      await _controller.service.enrollPin(_controller.userId!, pin);
+      await _finish();
+    } catch (failure) {
+      if (mounted) {
+        setState(
+          () => _error = failure is StateError
+              ? failure.message
+              : 'Unable to save your PIN. Please try again.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
   @override
+  void dispose() {
+    _pin = '';
+    _firstPin = null;
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFE8F5E9),
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (context) => const Dashboard()),
-              );
-            },
-            child: const Text(
-              'Skip',
-              style: TextStyle(
-                color: Color(0xFF1A5E38),
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
+    return PopScope(
+      canPop: !_busy,
+      child: Scaffold(
+        backgroundColor: const Color(0xFFE8F5E9),
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          actions: [
+            TextButton(
+              onPressed: _busy || !_canSetup ? null : _skip,
+              child: const Text('Skip'),
             ),
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24.0),
+          ],
+        ),
+        body: SafeArea(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 460),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const SizedBox(height: 20),
-                    // Title
                     const Text(
                       'Quick Access Setup',
                       style: TextStyle(
-                        color: Color(0xFF1A5E38),
+                        color: _green,
                         fontSize: 28,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                     const SizedBox(height: 8),
-                    // Subtitle
                     const Text(
-                      'Choose a faster login method for future sessions.',
-                      style: TextStyle(color: Color(0xFF1A5E38), fontSize: 14),
+                      'Choose a faster unlock method for future sessions, or skip to use your Member ID and password.',
+                      style: TextStyle(color: _green, fontSize: 14),
                     ),
-                    const SizedBox(height: 32),
-                    // Biometric and PIN buttons
+                    const SizedBox(height: 24),
                     Row(
                       children: [
                         Expanded(
-                          child: GestureDetector(
-                            onTap: () {
-                              setState(() {
-                                _isBiometricSelected = true;
-                              });
-                              if (_canCheckBiometrics &&
-                                  _availableBiometrics.isNotEmpty) {
-                                _authenticateWithBiometrics();
-                              } else {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'No biometric sensors available',
-                                    ),
-                                  ),
-                                );
-                              }
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              decoration: BoxDecoration(
-                                color: _isBiometricSelected
-                                    ? const Color(0xFF1A5E38)
-                                    : Colors.white,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: const Color(0xFF1A5E38),
-                                  width: 2,
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.fingerprint,
-                                    color: _isBiometricSelected
-                                        ? Colors.white
-                                        : const Color(0xFF1A5E38),
-                                    size: 24,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'Biometric',
-                                    style: TextStyle(
-                                      color: _isBiometricSelected
-                                          ? Colors.white
-                                          : const Color(0xFF1A5E38),
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
-                              ),
+                          child: OutlinedButton.icon(
+                            onPressed:
+                                _busy || !_canSetup || _checkingBiometrics
+                                ? null
+                                : _enrollBiometrics,
+                            icon: const Icon(Icons.fingerprint),
+                            label: const Text('Biometric'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: _biometricSelected
+                                  ? Colors.white
+                                  : _green,
+                              backgroundColor: _biometricSelected
+                                  ? _green
+                                  : Colors.white,
                             ),
                           ),
                         ),
                         const SizedBox(width: 16),
                         Expanded(
-                          child: GestureDetector(
-                            onTap: () {
-                              setState(() {
-                                _isBiometricSelected = false;
-                              });
-                              _secureStorage.write(
-                                SecureStorageService.biometricEnabledKey,
-                                'false',
-                              );
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              decoration: BoxDecoration(
-                                color: !_isBiometricSelected
-                                    ? const Color(0xFF1A5E38)
-                                    : Colors.white,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: const Color(0xFF1A5E38),
-                                  width: 2,
-                                ),
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.lock,
-                                    color: !_isBiometricSelected
-                                        ? Colors.white
-                                        : const Color(0xFF1A5E38),
-                                    size: 24,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Text(
-                                    'PIN',
-                                    style: TextStyle(
-                                      color: !_isBiometricSelected
-                                          ? Colors.white
-                                          : const Color(0xFF1A5E38),
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ],
-                              ),
+                          child: OutlinedButton.icon(
+                            onPressed: _busy || !_canSetup
+                                ? null
+                                : () => setState(() {
+                                    _biometricSelected = false;
+                                    _pin = '';
+                                    _firstPin = null;
+                                    _error = null;
+                                  }),
+                            icon: const Icon(Icons.lock),
+                            label: const Text('PIN'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: !_biometricSelected
+                                  ? Colors.white
+                                  : _green,
+                              backgroundColor: !_biometricSelected
+                                  ? _green
+                                  : Colors.white,
                             ),
                           ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 32),
-                    if (!_isBiometricSelected) ...[
-                      // PIN entry prompt
-                      const Text(
-                        'ENTER 4-DIGIT PIN',
-                        style: TextStyle(
-                          color: Color(0xFF1A5E38),
-                          fontSize: 14,
+                    if (_checkingBiometrics)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 12),
+                        child: Text('Checking biometric availability...'),
+                      ),
+                    if (!_checkingBiometrics && !_biometricsAvailable)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 12),
+                        child: Text(
+                          'No enrolled biometrics available. You can use PIN or skip setup.',
+                        ),
+                      ),
+                    if (_error != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 16),
+                        child: Text(
+                          _error!,
+                          style: const TextStyle(color: Colors.red),
+                        ),
+                      ),
+                    if (_busy)
+                      const Padding(
+                        padding: EdgeInsets.all(24),
+                        child: Center(child: CircularProgressIndicator()),
+                      ),
+                    if (!_biometricSelected) ...[
+                      const SizedBox(height: 24),
+                      Text(
+                        _firstPin == null
+                            ? 'ENTER 4-DIGIT PIN'
+                            : 'CONFIRM YOUR 4-DIGIT PIN',
+                        style: const TextStyle(
+                          color: _green,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      const SizedBox(height: 24),
-                      // PIN circles
+                      const SizedBox(height: 20),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
-                        children: List.generate(4, (index) {
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 8),
-                            child: Container(
-                              width: 16,
-                              height: 16,
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: index < _pin.length
-                                    ? const Color(0xFF1A5E38)
-                                    : const Color(0xFFBDBDBD),
-                              ),
+                        children: List.generate(
+                          4,
+                          (index) => Container(
+                            margin: const EdgeInsets.symmetric(horizontal: 8),
+                            width: 16,
+                            height: 16,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: index < _pin.length
+                                  ? _green
+                                  : Colors.grey.shade400,
                             ),
-                          );
-                        }).toList(),
+                          ),
+                        ),
                       ),
-                      const SizedBox(height: 32),
-                      // Numeric keypad
-                      _buildKeypad(),
+                      const SizedBox(height: 20),
+                      for (final row in [
+                        ['1', '2', '3'],
+                        ['4', '5', '6'],
+                        ['7', '8', '9'],
+                        ['', '0', 'back'],
+                      ])
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: row
+                              .map(
+                                (number) => SizedBox(
+                                  width: 72,
+                                  height: 72,
+                                  child: number.isEmpty
+                                      ? null
+                                      : TextButton(
+                                          onPressed: _busy || !_canSetup
+                                              ? null
+                                              : number == 'back'
+                                              ? () => setState(() {
+                                                  if (_pin.isNotEmpty) {
+                                                    _pin = _pin.substring(
+                                                      0,
+                                                      _pin.length - 1,
+                                                    );
+                                                  }
+                                                })
+                                              : () => _onNumberPressed(number),
+                                          child: number == 'back'
+                                              ? const Icon(
+                                                  Icons.backspace_outlined,
+                                                )
+                                              : Text(
+                                                  number,
+                                                  style: const TextStyle(
+                                                    fontSize: 24,
+                                                    color: _green,
+                                                  ),
+                                                ),
+                                        ),
+                                ),
+                              )
+                              .toList(),
+                        ),
                     ],
                   ],
                 ),
               ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildKeypad() {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final buttonSize = (constraints.maxWidth / 5).clamp(56.0, 80.0);
-        return Column(
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                _buildKeypadButton('1', buttonSize),
-                _buildKeypadButton('2', buttonSize),
-                _buildKeypadButton('3', buttonSize),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                _buildKeypadButton('4', buttonSize),
-                _buildKeypadButton('5', buttonSize),
-                _buildKeypadButton('6', buttonSize),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                _buildKeypadButton('7', buttonSize),
-                _buildKeypadButton('8', buttonSize),
-                _buildKeypadButton('9', buttonSize),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                SizedBox(width: buttonSize),
-                _buildKeypadButton('0', buttonSize),
-                GestureDetector(
-                  onTap: _onBackPressed,
-                  child: Container(
-                    width: buttonSize,
-                    height: buttonSize,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: const Color(0xFF1A5E38)),
-                    ),
-                    child: const Icon(
-                      Icons.backspace,
-                      color: Color(0xFF1A5E38),
-                      size: 24,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildKeypadButton(String number, double size) {
-    return GestureDetector(
-      onTap: () => _onNumberPressed(number),
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          shape: BoxShape.circle,
-          border: Border.all(color: const Color(0xFF1A5E38)),
-        ),
-        child: Center(
-          child: Text(
-            number,
-            style: const TextStyle(
-              color: Color(0xFF1A5E38),
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
             ),
           ),
         ),

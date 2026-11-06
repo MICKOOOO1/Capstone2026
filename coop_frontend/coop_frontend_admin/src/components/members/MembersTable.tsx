@@ -5,18 +5,17 @@ import { useRouter } from "next/navigation";
 import {
   Ban,
   Eye,
-  KeyRound,
   MoreVertical,
   Pencil,
-  ShieldCheck,
   Trash2,
   Unlock,
 } from "lucide-react";
 import { Member } from "./MembersData";
 import RoleBadge from "./RoleBadge";
 import StatusBadge from "./StatusBadge";
+import MembershipTypeBadge from "@/components/shared/MembershipTypeBadge";
 import MembersPagination from "./MembersPagination";
-import { profile } from "@/components/profile/ProfileData";
+import { useAdminAuth } from "@/components/auth/AdminAuthProvider";
 
 interface MembersTableProps {
   members: Member[];
@@ -25,6 +24,7 @@ interface MembersTableProps {
   totalItems: number;
   showingFrom: number;
   showingTo: number;
+  readOnly?: boolean;
   onPageChange: (page: number) => void;
   onViewMember: (member: Member) => void;
   onEditMember: (member: Member) => void;
@@ -38,7 +38,7 @@ interface ActionMenuState {
   left: number;
 }
 
-const getDisplayIdNumber = (idNumber: string) => idNumber.replace(/^CSUCC-/, "");
+const getDisplayIdNumber = (idNumber: string) => idNumber;
 
 export default function MembersTable({
   members,
@@ -47,6 +47,7 @@ export default function MembersTable({
   totalItems,
   showingFrom,
   showingTo,
+  readOnly = false,
   onPageChange,
   onViewMember,
   onEditMember,
@@ -54,38 +55,22 @@ export default function MembersTable({
   onDeleteMember,
 }: MembersTableProps) {
   const router = useRouter();
+  const { user } = useAdminAuth();
   const [openMenu, setOpenMenu] = useState<ActionMenuState | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const selectedMember = openMenu
-    ? members.find((member) => member.idNumber === openMenu.idNumber)
+    ? members.find((member) => (member.accountKey ?? member.idNumber) === openMenu.idNumber)
     : null;
 
-  const currentUserFullName = `${profile.firstName} ${profile.lastName}`.toLowerCase();
   const isCurrentActiveSuperAdmin = (member: Member) =>
-    member.role === "Super Administrator" &&
+    (member.role === "Super Admin" || member.role === "Super Administrator") &&
     member.status === "Active" &&
-    profile.role === "Super Administrator" &&
-    profile.accountStatus === "Active" &&
-    (member.idNumber === profile.id ||
-      member.email.toLowerCase() === profile.email.toLowerCase() ||
-      member.fullName.toLowerCase() === currentUserFullName);
-
-  const handleResetPassword = (member: Member) => {
-    window.alert(`Frontend only: password reset prepared for ${member.fullName}.`);
-  };
-
-  const handleRolePrivileges = () => {
-    router.push("/settings");
-  };
+    user?.app_metadata.role === "super_admin" &&
+    (member.authUserId === user.id ||
+      member.email.toLowerCase() === (user.email ?? "").toLowerCase());
 
   const handleDeleteMember = (member: Member) => {
-    const shouldDelete = window.confirm(
-      `Delete ${member.fullName} from this frontend list? This will not affect any database.`
-    );
-
-    if (shouldDelete) {
-      onDeleteMember(member);
-    }
+    onDeleteMember(member);
   };
 
   useEffect(() => {
@@ -126,7 +111,8 @@ export default function MembersTable({
     member: Member,
     event: React.MouseEvent<HTMLButtonElement>
   ) => {
-    if (openMenu?.idNumber === member.idNumber) {
+    const accountKey = member.accountKey ?? member.idNumber;
+    if (openMenu?.idNumber === accountKey) {
       setOpenMenu(null);
       return;
     }
@@ -135,7 +121,7 @@ export default function MembersTable({
     const menuWidth = 214;
 
     setOpenMenu({
-      idNumber: member.idNumber,
+      idNumber: accountKey,
       top: rect.bottom + 6,
       left: Math.max(12, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 12)),
     });
@@ -143,16 +129,17 @@ export default function MembersTable({
 
   return (
     <div className="relative">
-      <div className="overflow-hidden border-t border-[#E5E7EB]">
-        <table className="w-full table-fixed">
+      <div className="overflow-x-auto border-t border-[#E5E7EB]">
+        <table className="w-full min-w-[1050px] table-fixed">
           <colgroup>
-            <col className="w-[11%]" />
-            <col className="w-[16%]" />
-            <col className="w-[26%]" />
-            <col className="w-[16%]" />
-            <col className="w-[13%]" />
-            <col className="w-[11%]" />
-            <col className="w-[7%]" />
+              <col className="w-[11%]" />
+              <col className="w-[18%]" />
+              <col className="w-[18%]" />
+              <col className="w-[13%]" />
+              <col className="w-[12%]" />
+              <col className="w-[10%]" />
+              <col className="w-[10%]" />
+              <col className="w-[8%]" />
           </colgroup>
           <thead>
             <tr className="h-11 border-b border-[#E5E7EB] bg-[#F8FAFC]">
@@ -165,11 +152,14 @@ export default function MembersTable({
               <th className="px-3 text-left text-[10px] font-semibold uppercase tracking-wide text-[#64748B]">
                 Email Address
               </th>
-              <th className="px-3 text-left text-[10px] font-semibold uppercase tracking-wide text-[#64748B]">
-                Department
+              <th className="px-3 text-center text-[10px] font-semibold uppercase tracking-wide text-[#64748B]">
+              Role
               </th>
               <th className="px-3 text-center text-[10px] font-semibold uppercase tracking-wide text-[#64748B]">
-                Role
+                Membership Type
+              </th>
+              <th className="px-3 text-left text-[10px] font-semibold uppercase tracking-wide text-[#64748B]">
+              Department
               </th>
               <th className="px-3 text-center text-[10px] font-semibold uppercase tracking-wide text-[#64748B]">
                 Status
@@ -183,28 +173,44 @@ export default function MembersTable({
             {members.length > 0 ? (
               members.map((member) => (
                 <tr
-                  key={member.idNumber}
+                  key={member.accountKey ?? member.idNumber}
                   className="h-[62px] border-b border-[#E5E7EB] transition-colors last:border-b-0 hover:bg-[#F8FAFC]"
                 >
                   <td className="truncate whitespace-nowrap px-3 text-[13px] font-semibold text-[#155D3B]" title={member.idNumber}>
-                    {getDisplayIdNumber(member.idNumber)}
+                    {member.idNumber ? getDisplayIdNumber(member.idNumber) : "N/A"}
                   </td>
                   <td className="truncate whitespace-nowrap px-3 text-[13px] font-semibold text-[#0F172A]" title={member.fullName}>
-                    {member.fullName}
+                    {member.fullName || "Not recorded"}
+                    {member.integrityIssue && (
+                      <span className="mt-1 block truncate text-[10px] font-medium text-[#92400E]" title={member.integrityIssue}>
+                        Data integrity issue
+                      </span>
+                    )}
                   </td>
                   <td className="truncate whitespace-nowrap px-3 text-[13px] font-normal text-[#334155]" title={member.email}>
-                    <a
-                      href={`mailto:${member.email}`}
-                      className="block truncate transition-colors hover:text-[#155D3B]"
-                    >
-                      {member.email}
-                    </a>
+                    {member.email ? (
+                      <a
+                        href={`mailto:${member.email}`}
+                        className="block truncate transition-colors hover:text-[#155D3B]"
+                      >
+                        {member.email}
+                      </a>
+                    ) : (
+                      "Not recorded"
+                    )}
+                  </td>
+                  <td className="px-2 text-center">
+                    <RoleBadge role={member.role} />
+                  </td>
+                  <td className="px-2 text-center">
+                    {member.role === "Member" ? (
+                      <MembershipTypeBadge membershipType={member.membershipType} />
+                    ) : (
+                      <span className="text-[12px] text-[#64748B]">N/A</span>
+                    )}
                   </td>
                   <td className="truncate whitespace-nowrap px-3 text-[13px] font-normal text-[#334155]" title={member.department}>
-                    {member.department}
-                  </td>
-                  <td className="px-3 text-center">
-                    <RoleBadge role={member.role} />
+                    {member.role === "Member" ? member.department || "N/A" : "N/A"}
                   </td>
                   <td className="px-3 text-center">
                     <StatusBadge status={member.status} />
@@ -217,7 +223,7 @@ export default function MembersTable({
                         onClick={(event) => handleActionButtonClick(member, event)}
                         className="flex h-[34px] w-[34px] items-center justify-center rounded-[8px] border border-[#D1D5DB] bg-white text-[#64748B] transition-colors hover:border-[#155D3B] hover:bg-[#F8FAFC] hover:text-[#155D3B] focus:outline-none focus:ring-2 focus:ring-[#155D3B]/20"
                         aria-label={`Open actions for ${member.fullName}`}
-                        aria-expanded={openMenu?.idNumber === member.idNumber}
+                        aria-expanded={openMenu?.idNumber === (member.accountKey ?? member.idNumber)}
                       >
                         <MoreVertical className="h-[18px] w-[18px]" />
                       </button>
@@ -227,8 +233,8 @@ export default function MembersTable({
               ))
             ) : (
               <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-[14px] text-[#64748B]">
-                  No members found.
+                <td colSpan={8} className="px-4 py-10 text-center text-[14px] text-[#64748B]">
+                  No accounts found.
                 </td>
               </tr>
             )}
@@ -268,7 +274,11 @@ export default function MembersTable({
             <button
               type="button"
               onClick={() => {
-                router.push("/profile");
+                router.push(
+                  window.location.pathname.startsWith("/super-admin/")
+                    ? "/super-admin/profile"
+                    : "/profile"
+                );
                 setOpenMenu(null);
               }}
               className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[12px] font-medium text-[#374151] transition-colors hover:bg-[#F8FAFC] hover:text-[#155D3B]"
@@ -278,52 +288,24 @@ export default function MembersTable({
               Edit My Account
             </button>
           ) : (
+            !readOnly &&
+            selectedMember.profileLinked &&
+            selectedMember.role !== "Unknown" &&
+            selectedMember.role !== "Super Admin" &&
+            selectedMember.role !== "Super Administrator" && (
             <>
-              {selectedMember.role !== "Super Administrator" && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onEditMember(selectedMember);
-                      setOpenMenu(null);
-                    }}
-                    className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[12px] font-medium text-[#374151] transition-colors hover:bg-[#F8FAFC] hover:text-[#155D3B]"
-                    role="menuitem"
-                  >
-                    <Pencil className="h-4 w-4" />
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      handleResetPassword(selectedMember);
-                      setOpenMenu(null);
-                    }}
-                    className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[12px] font-medium text-[#374151] transition-colors hover:bg-[#F8FAFC] hover:text-[#155D3B]"
-                    role="menuitem"
-                  >
-                    <KeyRound className="h-4 w-4" />
-                    Reset Password
-                  </button>
-                </>
-              )}
-
-              {(selectedMember.role === "Administrator" ||
-                selectedMember.role === "Super Administrator") && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    handleRolePrivileges();
-                    setOpenMenu(null);
-                  }}
-                  className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[12px] font-medium text-[#374151] transition-colors hover:bg-[#F8FAFC] hover:text-[#155D3B]"
-                  role="menuitem"
-                >
-                  <ShieldCheck className="h-4 w-4" />
-                  Role &amp; Privileges
-                </button>
-              )}
-
+              <button
+                type="button"
+                onClick={() => {
+                  onEditMember(selectedMember);
+                  setOpenMenu(null);
+                }}
+                className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[12px] font-medium text-[#374151] transition-colors hover:bg-[#F8FAFC] hover:text-[#155D3B]"
+                role="menuitem"
+              >
+                <Pencil className="h-4 w-4" />
+                Edit Account
+              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -344,9 +326,7 @@ export default function MembersTable({
                 )}
                 {selectedMember.status === "Blocked" ? "Unblock" : "Block"}
               </button>
-
               <div className="my-1 border-t border-[#F1F5F9]" />
-
               <button
                 type="button"
                 onClick={() => {
@@ -357,10 +337,10 @@ export default function MembersTable({
                 role="menuitem"
               >
                 <Trash2 className="h-4 w-4" />
-                Delete
+                Delete Account
               </button>
             </>
-          )}
+          ))}
         </div>
       )}
     </div>

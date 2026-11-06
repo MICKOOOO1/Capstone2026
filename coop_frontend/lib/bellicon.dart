@@ -10,44 +10,7 @@ class NotificationsScreen extends StatefulWidget {
 }
 
 class _NotificationsScreenState extends State<NotificationsScreen> {
-  final int _currentIndex = 0;
-
-  final List<NotificationItem> _notifications = [
-    NotificationItem(
-      id: 1,
-      title: 'Loan Approved!',
-      timestamp: '2h ago',
-      description:
-          'Your Regular Loan of ₱80,000 has been approved.\nTap to review and sign the Loan Agreement.',
-      actionText: 'Tap to sign agreement →',
-      icon: Icons.check,
-      iconColor: Colors.white,
-      iconBgColor: AppTheme.iconGreen,
-      isHighlighted: true,
-    ),
-    NotificationItem(
-      id: 2,
-      title: 'Payment Reminder',
-      timestamp: '1d ago',
-      description:
-          'Your monthly amortization of ₱12,133.33 is due on Jul 15, 2025.\nPlease ensure your account has sufficient balance.',
-      icon: Icons.calendar_today,
-      iconColor: Colors.white,
-      iconBgColor: AppTheme.iconPurple,
-      isHighlighted: false,
-    ),
-    NotificationItem(
-      id: 3,
-      title: 'Application Received',
-      timestamp: '4d ago',
-      description:
-          'Your loan application has been received and is now being processed by the Credit Committee.',
-      icon: Icons.description,
-      iconColor: Colors.white,
-      iconBgColor: AppTheme.iconOrange,
-      isHighlighted: false,
-    ),
-  ];
+  final List<NotificationItem> _notifications = [];
 
   @override
   Widget build(BuildContext context) {
@@ -61,16 +24,20 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(AppTheme.spacingL),
                 child: Column(
-                  children: _notifications.map((notification) {
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: AppTheme.spacingM),
-                      child: notification.isHighlighted
-                          ? HighlightedNotificationCard(
-                              notification: notification,
-                            )
-                          : NotificationCard(notification: notification),
-                    );
-                  }).toList(),
+                  children: _notifications.isEmpty
+                      ? [const Text('No notification data loaded.')]
+                      : _notifications.map((notification) {
+                          return Padding(
+                            padding: const EdgeInsets.only(
+                              bottom: AppTheme.spacingM,
+                            ),
+                            child: notification.isHighlighted
+                                ? HighlightedNotificationCard(
+                                    notification: notification,
+                                  )
+                                : NotificationCard(notification: notification),
+                          );
+                        }).toList(),
                 ),
               ),
             ),

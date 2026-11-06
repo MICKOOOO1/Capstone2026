@@ -13,12 +13,14 @@ import {
   MemberSortOption,
   MemberStatusFilter,
 } from "@/components/members/MembersData";
+import { MembershipTypeFilter } from "@/lib/membership";
 
 interface AppliedFilters {
   search: string;
   memberId: string;
   role: MemberRoleFilter;
   status: MemberStatusFilter;
+  membershipType: MembershipTypeFilter;
 }
 
 const normalizeFilterValue = (value: string) => value.trim().toLowerCase();
@@ -34,6 +36,7 @@ export default function MembersPage() {
     memberId: "",
     role: "All Roles",
     status: "All Status",
+    membershipType: "All Members",
   });
   const [pageSize, setPageSize] = useState(10);
   const [sortOption, setSortOption] = useState<MemberSortOption>("Newest");
@@ -101,8 +104,12 @@ export default function MembersPage() {
         filters.role === "All Roles" || member.role === filters.role;
       const matchesStatus =
         filters.status === "All Status" || member.status === filters.status;
+      const matchesMembershipType =
+        filters.membershipType === "All Members" ||
+        member.membershipType ===
+          (filters.membershipType === "Regular Member" ? "regular" : "associate");
 
-      return matchesSearch && matchesMemberId && matchesRole && matchesStatus;
+      return matchesSearch && matchesMemberId && matchesRole && matchesStatus && matchesMembershipType;
     });
   }, [members, filters]);
 
@@ -135,7 +142,9 @@ export default function MembersPage() {
   const showingFrom = sortedMembers.length === 0 ? 0 : pageStartIndex + 1;
   const showingTo = Math.min(pageStartIndex + pageSize, sortedMembers.length);
   const showClearButton =
-    filters.search.trim() !== "" || filters.memberId.trim() !== "";
+    filters.search.trim() !== "" ||
+    filters.memberId.trim() !== "" ||
+    filters.membershipType !== "All Members";
 
   const applyTextFilters = () => {
     setFilters((current) => ({
@@ -153,6 +162,11 @@ export default function MembersPage() {
 
   const updateStatusFilter = (status: MemberStatusFilter) => {
     setFilters((current) => ({ ...current, status }));
+    setCurrentPage(1);
+  };
+
+  const updateMembershipTypeFilter = (membershipType: MembershipTypeFilter) => {
+    setFilters((current) => ({ ...current, membershipType }));
     setCurrentPage(1);
   };
 
@@ -174,6 +188,7 @@ export default function MembersPage() {
       memberId: "",
       role: "All Roles",
       status: "All Status",
+      membershipType: "All Members",
     });
     setSortOption("Newest");
     setCurrentPage(1);
@@ -229,6 +244,7 @@ export default function MembersPage() {
           memberIdValue={memberIdInput}
           roleFilter={filters.role}
           statusFilter={filters.status}
+          membershipTypeFilter={filters.membershipType}
           sortOption={sortOption}
           pageSize={pageSize}
           showClear={showClearButton}
@@ -238,6 +254,7 @@ export default function MembersPage() {
           onClearFilters={clearMemberControls}
           onRoleFilterChange={updateRoleFilter}
           onStatusFilterChange={updateStatusFilter}
+          onMembershipTypeFilterChange={updateMembershipTypeFilter}
           onSortChange={updateSortOption}
           onPageSizeChange={updatePageSize}
           onAddMember={() => setMemberForm({ mode: "add", member: null })}

@@ -81,7 +81,7 @@ class LoanTypeCatalog {
 }
 
 class LoanEligibility {
-  static const Set<LoanType> ongoingLoanTypes = {LoanType.regular};
+  static const Set<LoanType> ongoingLoanTypes = {};
 
   static bool isOngoing(LoanType loanType) {
     return ongoingLoanTypes.contains(loanType);
@@ -119,9 +119,7 @@ class LoanComputation {
 }
 
 class LoanCalculatorService {
-  static const double processingFeeRate = 0.004; // 0.4%
   static const double notarialFee = 150.0;
-  static const double retentionFeeRate = 0.05; // 5%
   static const double maxLoanAmount = 500000.0;
   static const double minLoanAmount = 1000.0;
   static const double goldLimit = 200000.0;
@@ -130,16 +128,18 @@ class LoanCalculatorService {
     required double principal,
     required int months,
     required LoanType loanType,
+    double baseInterestRatePercent = 1.5,
+    double processingFeePercent = 1,
+    double serviceFeePercent = 0.5,
   }) {
-    // Interest rates based on loan type (per month, flat rate)
-    double interestRate = _getInterestRate(loanType);
+    final interestRate = baseInterestRatePercent / 100;
 
     // Calculate total interest
     double totalInterest = principal * interestRate * months;
 
     // Calculate fees
-    double processingFee = principal * processingFeeRate;
-    double retentionFee = principal * retentionFeeRate;
+    final processingFee = principal * processingFeePercent / 100;
+    final retentionFee = principal * serviceFeePercent / 100;
 
     // Calculate net take-home
     double netTakeHome =
@@ -163,21 +163,6 @@ class LoanCalculatorService {
       monthlyAmortization: monthlyAmortization,
       paymentDates: paymentDates,
     );
-  }
-
-  double _getInterestRate(LoanType loanType) {
-    switch (loanType) {
-      case LoanType.regular:
-        return 0.02; // 2% per month
-      case LoanType.educational:
-        return 0.015; // 1.5% per month
-      case LoanType.emergency:
-        return 0.025; // 2.5% per month
-      case LoanType.calamity:
-        return 0.01; // 1% per month
-      default:
-        return 0.02; // Use the standard rate for catalog types without a dedicated rate.
-    }
   }
 
   List<DateTime> _generatePaymentDates(int months) {

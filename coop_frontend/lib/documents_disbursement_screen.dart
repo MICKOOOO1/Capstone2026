@@ -2,12 +2,17 @@ import 'package:flutter/material.dart';
 import 'app_theme.dart';
 import 'application_summary_screen.dart';
 import 'loan_calculator_service.dart';
+import 'models/loan_document.dart';
+import 'services/document_picker_service.dart';
 
 class DocumentsDisbursementScreen extends StatefulWidget {
   final double loanAmount;
   final LoanType loanType;
   final int tenure;
   final LoanComputation computation;
+  final double collateralRequiredAbove;
+  final DocumentPickerService? picker;
+  final ValueChanged<List<SelectedLoanDocument>>? onReview;
 
   const DocumentsDisbursementScreen({
     super.key,
@@ -15,6 +20,9 @@ class DocumentsDisbursementScreen extends StatefulWidget {
     required this.loanType,
     required this.tenure,
     required this.computation,
+    this.collateralRequiredAbove = 200000,
+    this.picker,
+    this.onReview,
   });
 
   @override
@@ -24,14 +32,112 @@ class DocumentsDisbursementScreen extends StatefulWidget {
 
 class _DocumentsDisbursementScreenState
     extends State<DocumentsDisbursementScreen> {
-  String? _payslipFileName;
-  String? _idFileName;
-  String? _collateralFileName;
-  String? _otherFileName;
+  final _documents = <LoanDocumentKind, SelectedLoanDocument>{};
+  late final DocumentPickerService _picker;
+  bool _busy = true;
+  bool _choosingSource = false;
+  String? _error;
+  String? get _payslipFileName => _documents[LoanDocumentKind.payslip]?.name;
+  String? get _idFileName => _documents[LoanDocumentKind.validId]?.name;
+  String? get _collateralFileName =>
+      _documents[LoanDocumentKind.collateral]?.name;
+  String? get _otherFileName => _documents[LoanDocumentKind.supporting]?.name;
 
-  bool get _isCollateralRequired => widget.loanAmount > 200000;
+  @override
+  void initState() {
+    super.initState();
+    _picker = widget.picker ?? DocumentPickerService();
+    _recoverSelection();
+  }
+
+  Future<void> _recoverSelection() async {
+    try {
+      final recovered = await _picker.recoverLostSelection();
+      if (mounted && recovered != null)
+        setState(() => _documents[recovered.kind] = recovered);
+    } catch (_) {
+      if (mounted)
+        setState(
+          () => _error =
+              'Unable to recover the previous image selection. Please choose it again.',
+        );
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _pickDocument(LoanDocumentKind kind) async {
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _choosingSource = true;
+      _error = null;
+    });
+    try {
+      final source = await showModalBottomSheet<DocumentSource>(
+        context: context,
+        builder: (sheetContext) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  kind.label,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 18,
+                  ),
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.camera_alt_outlined),
+                title: const Text('Camera'),
+                subtitle: const Text('Take a photo'),
+                onTap: () => Navigator.pop(sheetContext, DocumentSource.camera),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library_outlined),
+                title: const Text('Gallery'),
+                subtitle: const Text('Choose an existing picture'),
+                onTap: () =>
+                    Navigator.pop(sheetContext, DocumentSource.gallery),
+              ),
+              ListTile(
+                leading: const Icon(Icons.folder_open_outlined),
+                title: const Text('Files'),
+                subtitle: const Text('Choose an image or PDF'),
+                onTap: () => Navigator.pop(sheetContext, DocumentSource.files),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (mounted) setState(() => _choosingSource = false);
+      if (source == null || !mounted) return;
+      final selected = await _picker.pick(kind, source);
+      if (mounted && selected != null)
+        setState(() => _documents[kind] = selected);
+    } catch (failure) {
+      if (mounted)
+        setState(
+          () => _error =
+              '${kind.label}: ${failure is StateError ? failure.message : 'Unable to select this file. Please try again.'}',
+        );
+    } finally {
+      if (mounted)
+        setState(() {
+          _busy = false;
+          _choosingSource = false;
+        });
+    }
+  }
+
+  bool get _isCollateralRequired =>
+      widget.loanAmount > widget.collateralRequiredAbove;
 
   bool get _isValidated {
+    if (_busy) return false;
     if (_payslipFileName == null || _idFileName == null) return false;
     if (_isCollateralRequired && _collateralFileName == null) return false;
     return true;
@@ -65,36 +171,37 @@ class _DocumentsDisbursementScreenState
                 title: 'Pay Slip *',
                 subtitle: 'Latest payslip (within 3 months)',
                 fileName: _payslipFileName,
-                onUpload: (fileName) {
-                  setState(() {
-                    _payslipFileName = fileName;
-                  });
-                },
+                document: _documents[LoanDocumentKind.payslip],
+                enabled: !_busy,
+                onUpload: () => _pickDocument(LoanDocumentKind.payslip),
+                onRemove: () =>
+                    setState(() => _documents.remove(LoanDocumentKind.payslip)),
               ),
               const SizedBox(height: AppTheme.spacingM),
               UploadRequirementCard(
                 title: 'Valid Identification *',
                 subtitle: 'Government-issued photo ID',
                 fileName: _idFileName,
-                onUpload: (fileName) {
-                  setState(() {
-                    _idFileName = fileName;
-                  });
-                },
+                document: _documents[LoanDocumentKind.validId],
+                enabled: !_busy,
+                onUpload: () => _pickDocument(LoanDocumentKind.validId),
+                onRemove: () =>
+                    setState(() => _documents.remove(LoanDocumentKind.validId)),
               ),
               const SizedBox(height: AppTheme.spacingM),
               UploadRequirementCard(
                 title: 'Collateral Document',
                 subtitle: _isCollateralRequired
-                    ? 'Required for loans over ₱200,000'
-                    : 'Optional (required for loans over ₱200,000)',
+                    ? 'Required for loans over ${LoanCalculatorService.formatCurrency(widget.collateralRequiredAbove)}'
+                    : 'Optional (required for loans over ${LoanCalculatorService.formatCurrency(widget.collateralRequiredAbove)})',
                 fileName: _collateralFileName,
                 isRequired: _isCollateralRequired,
-                onUpload: (fileName) {
-                  setState(() {
-                    _collateralFileName = fileName;
-                  });
-                },
+                document: _documents[LoanDocumentKind.collateral],
+                enabled: !_busy,
+                onUpload: () => _pickDocument(LoanDocumentKind.collateral),
+                onRemove: () => setState(
+                  () => _documents.remove(LoanDocumentKind.collateral),
+                ),
               ),
               const SizedBox(height: AppTheme.spacingM),
               UploadRequirementCard(
@@ -102,17 +209,43 @@ class _DocumentsDisbursementScreenState
                 subtitle: 'Optional additional documents',
                 fileName: _otherFileName,
                 isRequired: false,
-                onUpload: (fileName) {
-                  setState(() {
-                    _otherFileName = fileName;
-                  });
-                },
+                document: _documents[LoanDocumentKind.supporting],
+                enabled: !_busy,
+                onUpload: () => _pickDocument(LoanDocumentKind.supporting),
+                onRemove: () => setState(
+                  () => _documents.remove(LoanDocumentKind.supporting),
+                ),
               ),
               const SizedBox(height: AppTheme.spacingXL),
+              const Text(
+                'Images and PDFs, up to 10 MB each. Documents are saved when you submit the application.',
+                style: TextStyle(fontSize: 12, color: AppTheme.mutedGray),
+              ),
+              if (_error != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Text(
+                    _error!,
+                    style: const TextStyle(color: Colors.red),
+                  ),
+                ),
+              if (_busy && !_choosingSource)
+                const Padding(
+                  padding: EdgeInsets.all(12),
+                  child: Center(child: CircularProgressIndicator()),
+                ),
               PrimaryButton(
                 isEnabled: _isValidated,
                 onPressed: _isValidated
                     ? () {
+                        final documents =
+                            List<SelectedLoanDocument>.unmodifiable(
+                              _documents.values,
+                            );
+                        if (widget.onReview != null) {
+                          widget.onReview!(documents);
+                          return;
+                        }
                         Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -125,6 +258,7 @@ class _DocumentsDisbursementScreenState
                               idFileName: _idFileName!,
                               collateralFileName: _collateralFileName,
                               otherFileName: _otherFileName,
+                              documents: documents,
                             ),
                           ),
                         );
@@ -245,7 +379,10 @@ class UploadRequirementCard extends StatelessWidget {
   final String subtitle;
   final String? fileName;
   final bool isRequired;
-  final ValueChanged<String> onUpload;
+  final VoidCallback onUpload;
+  final VoidCallback? onRemove;
+  final SelectedLoanDocument? document;
+  final bool enabled;
 
   const UploadRequirementCard({
     super.key,
@@ -254,18 +391,15 @@ class UploadRequirementCard extends StatelessWidget {
     this.fileName,
     this.isRequired = true,
     required this.onUpload,
+    this.onRemove,
+    this.document,
+    this.enabled = true,
   });
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () {
-        // Simulate file picker - in production, use file_picker package
-        // For now, simulate a successful upload
-        final simulatedFileName =
-            '${title.replaceAll(' *', '').replaceAll(' ', '_')}_uploaded.pdf';
-        onUpload(simulatedFileName);
-      },
+      onTap: enabled ? onUpload : null,
       child: Container(
         padding: const EdgeInsets.all(AppTheme.spacingL),
         decoration: BoxDecoration(
@@ -284,15 +418,26 @@ class UploadRequirementCard extends StatelessWidget {
                     : const Color(0xFFF3F5F4),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(
-                fileName != null
-                    ? Icons.check_circle
-                    : Icons.cloud_upload_outlined,
-                color: fileName != null
-                    ? AppTheme.primaryGreen
-                    : const Color(0xFF7D8A82),
-                size: 24,
-              ),
+              clipBehavior: Clip.antiAlias,
+              child: document?.isImage == true
+                  ? Image.memory(
+                      document!.bytes,
+                      cacheWidth: 128,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => const Icon(
+                        Icons.image_outlined,
+                        color: AppTheme.primaryGreen,
+                      ),
+                    )
+                  : Icon(
+                      fileName != null
+                          ? Icons.check_circle
+                          : Icons.cloud_upload_outlined,
+                      color: fileName != null
+                          ? AppTheme.primaryGreen
+                          : const Color(0xFF7D8A82),
+                      size: 24,
+                    ),
             ),
             const SizedBox(width: AppTheme.spacingM),
             Expanded(
@@ -321,11 +466,57 @@ class UploadRequirementCard extends StatelessWidget {
                 ],
               ),
             ),
-            const Icon(
-              Icons.arrow_forward_ios,
-              color: Color(0xFF7D8A82),
-              size: 16,
-            ),
+            if (document?.isImage == true)
+              IconButton(
+                tooltip: 'Preview document',
+                icon: const Icon(Icons.visibility_outlined),
+                onPressed: !enabled
+                    ? null
+                    : () => showDialog<void>(
+                        context: context,
+                        builder: (dialogContext) => Dialog(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              ListTile(
+                                title: Text(fileName ?? title),
+                                trailing: IconButton(
+                                  icon: const Icon(Icons.close),
+                                  onPressed: () => Navigator.pop(dialogContext),
+                                ),
+                              ),
+                              Flexible(
+                                child: InteractiveViewer(
+                                  child: Image.memory(
+                                    document!.bytes,
+                                    cacheWidth: 1600,
+                                    fit: BoxFit.contain,
+                                    errorBuilder: (_, _, _) => const Padding(
+                                      padding: EdgeInsets.all(24),
+                                      child: Text(
+                                        'Preview is unavailable for this image format. You can still attach the original file.',
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+              ),
+            if (document != null)
+              IconButton(
+                tooltip: 'Remove document',
+                icon: const Icon(Icons.close),
+                onPressed: enabled ? onRemove : null,
+              ),
+            if (document == null)
+              const Icon(
+                Icons.arrow_forward_ios,
+                color: Color(0xFF7D8A82),
+                size: 16,
+              ),
           ],
         ),
       ),

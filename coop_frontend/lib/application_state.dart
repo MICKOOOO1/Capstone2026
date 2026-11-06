@@ -1,4 +1,5 @@
 class ApplicationState {
+  static String? loanProcessingTime;
   static bool _hasPendingApplication = false;
 
   static bool get hasPendingApplication => _hasPendingApplication;

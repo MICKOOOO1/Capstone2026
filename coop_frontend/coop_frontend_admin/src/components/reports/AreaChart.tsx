@@ -1,39 +1,46 @@
 "use client";
 
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area } from "recharts";
+import {
+  Area,
+  CartesianGrid,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import type { TooltipContentProps } from "recharts";
 
-const chartData = [
-  { month: "Feb", applications: 24, approved: 18 },
-  { month: "Mar", applications: 31, approved: 24 },
-  { month: "Apr", applications: 28, approved: 20 },
-  { month: "May", applications: 35, approved: 27 },
-  { month: "Jun", applications: 42, approved: 33 },
-  { month: "Jul", applications: 38, approved: 29 },
-];
+const chartData: { month: string; applications: number; approved: number }[] = [];
+
+function CustomTooltip({
+  active,
+  payload,
+  label,
+}: TooltipContentProps) {
+  if (!active || !payload?.length) {
+    return null;
+  }
+
+  return (
+    <div className="bg-white rounded-lg shadow-lg p-3 border border-[#E5E7EB]">
+      <p className="text-[13px] font-medium text-[#1F2937] mb-2 font-inter">{label}</p>
+      {payload.map((entry, index) => (
+        <div key={String(entry.dataKey ?? index)} className="flex items-center gap-2 mb-1">
+          <div
+            className="w-3 h-3 rounded-full"
+            style={{ backgroundColor: entry.color ?? "#64748B" }}
+          />
+          <p className="text-[12px] text-[#6B7280] font-inter">
+            {String(entry.dataKey)}: {String(entry.value)}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function AreaChart() {
-  const CustomTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="bg-white rounded-lg shadow-lg p-3 border border-[#E5E7EB]">
-          <p className="text-[13px] font-medium text-[#1F2937] mb-2 font-inter">{label}</p>
-          {payload.map((entry: any, index: number) => (
-            <div key={index} className="flex items-center gap-2 mb-1">
-              <div
-                className="w-3 h-3 rounded-full"
-                style={{ backgroundColor: entry.color }}
-              />
-              <p className="text-[12px] text-[#6B7280] font-inter">
-                {entry.dataKey}: {entry.value}
-              </p>
-            </div>
-          ))}
-        </div>
-      );
-    }
-    return null;
-  };
-
   return (
     <div className="w-full h-[220px]">
       <ResponsiveContainer width="100%" height="100%">
@@ -62,7 +69,7 @@ export default function AreaChart() {
             domain={[0, 60]}
             ticks={[0, 15, 30, 45, 60]}
           />
-          <Tooltip content={<CustomTooltip />} cursor={{ stroke: "#E5E7EB", strokeWidth: 1, strokeDasharray: "5 5" }} />
+          <Tooltip content={CustomTooltip} cursor={{ stroke: "#E5E7EB", strokeWidth: 1, strokeDasharray: "5 5" }} />
           <Area
             type="monotone"
             dataKey="applications"

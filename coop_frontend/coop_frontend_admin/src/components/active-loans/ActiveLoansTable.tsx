@@ -30,8 +30,6 @@ interface ActionMenuState {
   left: number;
 }
 
-const normalizeMemberId = (memberId: string) => memberId.replace(/^CSUCC-/i, "");
-
 const formatCurrency = (amount: string) => {
   const numericAmount = Number(amount.replace(/[^\d.-]/g, ""));
 
@@ -190,7 +188,7 @@ export default function ActiveLoansTable({
                       {loan.memberName}
                     </p>
                     <p className="mt-0.5 truncate whitespace-nowrap text-[11px] font-medium text-[#64748B]" title={loan.memberId}>
-                      {normalizeMemberId(loan.memberId)}
+                      {loan.memberId}
                     </p>
                   </td>
                   <td className="truncate whitespace-nowrap px-3 text-[13px] font-normal text-[#334155]" title={loan.type}>

@@ -1,4 +1,5 @@
 import 'package:intl/intl.dart';
+import 'application_state.dart';
 
 class ApplicationService {
   static String generateReferenceNumber() {
@@ -15,6 +16,9 @@ class ApplicationService {
   }
 
   static String getExpectedProcessingTime() {
-    return '3–5 Working Days';
+    final configured = ApplicationState.loanProcessingTime?.trim();
+    if (configured == null || configured.isEmpty)
+      return 'Contact Cooperative Admin';
+    return '$configured Working Days';
   }
 }

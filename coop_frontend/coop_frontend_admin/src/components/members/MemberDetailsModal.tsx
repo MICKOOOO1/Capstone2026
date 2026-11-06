@@ -4,6 +4,7 @@ import { X } from "lucide-react";
 import { Member } from "./MembersData";
 import RoleBadge from "./RoleBadge";
 import StatusBadge from "./StatusBadge";
+import MembershipTypeBadge from "@/components/shared/MembershipTypeBadge";
 
 interface MemberDetailsModalProps {
   member: Member | null;
@@ -19,6 +20,8 @@ export default function MemberDetailsModal({ member, onClose }: MemberDetailsMod
     { label: "ID Number", value: member.idNumber },
     { label: "Full Name", value: member.fullName },
     { label: "Email Address", value: member.email },
+    { label: "Contact Number", value: member.phone },
+    { label: "Address", value: member.address },
     { label: "Department", value: member.department },
   ];
 
@@ -37,9 +40,11 @@ export default function MemberDetailsModal({ member, onClose }: MemberDetailsMod
         <div className="flex items-center justify-between border-b border-[#E5E7EB] px-5 py-4">
           <div>
             <h2 id="member-details-title" className="text-[15px] font-bold text-[#1F2937]">
-              Member Details
+              Account Details
             </h2>
-            <p className="mt-0.5 text-[12px] text-[#6B7280]">{member.idNumber}</p>
+            <p className="mt-0.5 text-[12px] text-[#6B7280]">
+              {member.idNumber || "ID number not recorded"}
+            </p>
           </div>
           <button
             type="button"
@@ -55,9 +60,21 @@ export default function MemberDetailsModal({ member, onClose }: MemberDetailsMod
           {fields.map((field) => (
             <div key={field.label} className="grid grid-cols-[130px_1fr] gap-3">
               <span className="text-[12px] font-semibold text-[#6B7280]">{field.label}</span>
-              <span className="text-[13px] font-medium text-[#1F2937]">{field.value}</span>
+              <span className="text-[13px] font-medium text-[#1F2937]">
+                {field.value || "N/A"}
+              </span>
             </div>
           ))}
+          <div className="grid grid-cols-[130px_1fr] gap-3">
+            <span className="text-[12px] font-semibold text-[#6B7280]">
+              Membership Type
+            </span>
+            {member.role === "Member" ? (
+              <MembershipTypeBadge membershipType={member.membershipType} />
+            ) : (
+              <span className="text-[12px] text-[#64748B]">N/A</span>
+            )}
+          </div>
           <div className="grid grid-cols-[130px_1fr] gap-3">
             <span className="text-[12px] font-semibold text-[#6B7280]">Role</span>
             <RoleBadge role={member.role} />
@@ -66,6 +83,11 @@ export default function MemberDetailsModal({ member, onClose }: MemberDetailsMod
             <span className="text-[12px] font-semibold text-[#6B7280]">Status</span>
             <StatusBadge status={member.status} />
           </div>
+          {member.integrityIssue && (
+            <div className="rounded-md border border-[#FDE68A] bg-[#FFFBEB] px-3 py-2 text-[12px] text-[#92400E]">
+              Data integrity issue: {member.integrityIssue}
+            </div>
+          )}
         </div>
 
         <div className="flex justify-end border-t border-[#E5E7EB] px-5 py-4">

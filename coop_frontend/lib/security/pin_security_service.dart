@@ -96,19 +96,23 @@ class PinSecurityService {
     final nextAttempts = attempts + 1;
     if (nextAttempts >= _maxFailedAttempts) {
       final disabledUntil = DateTime.now().add(_lockoutDuration);
-      await _storage.write(
+      final disabledStored = await _storage.write(
         SecureStorageService.pinDisabledUntilKey,
         disabledUntil.millisecondsSinceEpoch.toString(),
       );
-      await _storage.write(
+      final attemptsStored = await _storage.write(
         SecureStorageService.pinFailedAttemptsKey,
         nextAttempts.toString(),
       );
+      return disabledStored && attemptsStored
+          ? PinVerificationResult.temporarilyDisabled
+          : PinVerificationResult.storageError;
     } else {
-      await _storage.write(
+      final attemptsStored = await _storage.write(
         SecureStorageService.pinFailedAttemptsKey,
         nextAttempts.toString(),
       );
+      if (!attemptsStored) return PinVerificationResult.storageError;
     }
     return PinVerificationResult.incorrect;
   }

@@ -1,11 +1,13 @@
 import { getSupabaseClient } from './supabase'
 import type { Member, MemberStatus } from '@/components/members/MembersData'
+import { normalizeMembershipType } from '@/lib/membership'
 
 export interface LoanApplication {
   id: string;
   memberId: string;
   member: string;
   type: string;
+  membershipType?: 'regular' | 'associate' | null;
   amount: string;
   status: "Pending" | "Under Review" | "Approved" | "Rejected" | "Released" | "Completed" | "Overdue";
   date: string;
@@ -26,6 +28,7 @@ export interface SupabaseLoanApplication {
   date_approved?: string;
   date_released?: string;
   date_completed?: string;
+  membership_type?: string | null;
 }
 
 export interface SupabaseMember {
@@ -34,7 +37,9 @@ export interface SupabaseMember {
   first_name: string;
   last_name: string;
   email?: string | null;
+  phone?: string | null;
   address?: string | null;
+  membership_type?: string | null;
   status?: string | null;
   date_joined?: string | null;
   created_at?: string | null;
@@ -51,6 +56,7 @@ function transformToFrontendFormat(supabaseApp: SupabaseLoanApplication): LoanAp
     memberId: supabaseApp.member_id,
     member: supabaseApp.member_name,
     type: supabaseApp.loan_type,
+    membershipType: normalizeMembershipType(supabaseApp.membership_type),
     amount: `₱${supabaseApp.amount.toLocaleString('en-PH', { minimumFractionDigits: 2 })}`,
     status: status as LoanApplication['status'],
     date: new Date(supabaseApp.date_submitted).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -81,9 +87,12 @@ function transformMember(member: SupabaseMember): Member {
     idNumber: member.member_id,
     fullName: `${member.first_name} ${member.last_name}`.trim(),
     email: member.email ?? '',
+    phone: member.phone ?? '',
+    address: member.address ?? '',
     department: member.address ?? 'Not set',
     role: 'Member',
     status: toMemberStatus(member.status),
+    membershipType: normalizeMembershipType(member.membership_type),
     createdAt: member.date_joined ?? member.created_at ?? new Date().toISOString(),
   };
 }
@@ -97,7 +106,8 @@ export async function fetchLoanApplications(): Promise<LoanApplication[]> {
         members (
           member_id,
           first_name,
-          last_name
+          last_name,
+          membership_type
         )
       `)
       .order('date_submitted', { ascending: false });
@@ -107,7 +117,8 @@ export async function fetchLoanApplications(): Promise<LoanApplication[]> {
     return data.map((app) => transformToFrontendFormat({
       ...app,
       member_id: app.members?.member_id || '',
-      member_name: app.members ? `${app.members.first_name} ${app.members.last_name}` : app.member_name
+      member_name: app.members ? `${app.members.first_name} ${app.members.last_name}` : app.member_name,
+      membership_type: app.members?.membership_type ?? null
     }));
   } catch (error) {
     throw new Error(`Unable to fetch loan applications: ${String(error)}`);
@@ -123,7 +134,8 @@ export async function fetchLoanApplicationById(id: string): Promise<LoanApplicat
         members (
           member_id,
           first_name,
-          last_name
+          last_name,
+          membership_type
         )
       `)
       .eq('application_id', id)
@@ -134,7 +146,8 @@ export async function fetchLoanApplicationById(id: string): Promise<LoanApplicat
     return transformToFrontendFormat({
       ...data,
       member_id: data.members?.member_id || '',
-      member_name: data.members ? `${data.members.first_name} ${data.members.last_name}` : data.member_name
+      member_name: data.members ? `${data.members.first_name} ${data.members.last_name}` : data.member_name,
+      membership_type: data.members?.membership_type ?? null
     });
   } catch (error) {
     console.error('Error fetching loan application:', error);
@@ -207,7 +220,7 @@ export async function fetchMembers(): Promise<Member[]> {
   try {
     const { data, error } = await getSupabaseClient()
       .from('members')
-      .select('id, member_id, first_name, last_name, email, address, status, date_joined, created_at')
+      .select('id, member_id, first_name, last_name, email, phone, address, membership_type, status, date_joined, created_at')
       .order('date_joined', { ascending: false });
 
     if (error) throw error;

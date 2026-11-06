@@ -24,49 +24,20 @@ export interface Activity {
 }
 
 export const profile: Profile = {
-  id: "ADM-2020-001",
-  firstName: "John",
-  lastName: "Cruz",
-  email: "john.cruz@csucc.coop",
-  phone: "+63 917 000 0001",
-  department: "IT Department",
-  position: "Super Administrator",
-  role: "Super Administrator",
-  username: "jcruz",
-  accountStatus: "Active",
-  dateCreated: "January 15, 2020",
-  lastPasswordChange: "July 10, 2025",
-  lastLogin: "Jul 25, 2025 • 8:42 AM",
-  office: "CSUCC MPC Main Office",
+  id: "",
+  firstName: "",
+  lastName: "",
+  email: "",
+  phone: "",
+  department: "",
+  position: "",
+  role: "Unknown",
+  username: "",
+  accountStatus: "Unknown",
+  dateCreated: "",
+  lastPasswordChange: "",
+  lastLogin: "",
+  office: "",
 };
 
-export const activities: Activity[] = [
-  {
-    id: "1",
-    action: "Logged in",
-    description: "Successfully logged in from IP 192.168.1.10",
-    date: "Jul 25, 2025",
-    time: "8:42 AM",
-  },
-  {
-    id: "2",
-    action: "Updated Profile",
-    description: "Updated phone number and department information",
-    date: "Jul 20, 2025",
-    time: "3:15 PM",
-  },
-  {
-    id: "3",
-    action: "Changed Password",
-    description: "Password successfully updated",
-    date: "Jul 10, 2025",
-    time: "11:30 AM",
-  },
-  {
-    id: "4",
-    action: "Approved Loan",
-    description: "Approved loan application LA-2025-0087",
-    date: "Jul 8, 2025",
-    time: "2:45 PM",
-  },
-];
+export const activities: Activity[] = [];

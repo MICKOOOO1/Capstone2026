@@ -8,12 +8,14 @@ import Toolbar, {
 import LoanApplicationsTable from "@/components/loan-applications/LoanApplicationsTable";
 import { fetchLoanApplications, LoanApplication, updateLoanApplicationStatus } from "@/lib/api";
 import { getSupabaseClient } from "@/lib/supabase";
+import { MembershipTypeFilter } from "@/lib/membership";
 
 interface AppliedFilters {
   search: string;
   memberId: string;
   loanType: string;
   status: LoanStatusFilter;
+  membershipType: MembershipTypeFilter;
 }
 
 const normalizeFilterValue = (value: string) =>
@@ -35,6 +37,7 @@ export default function LoanApplicationsPage() {
     memberId: "",
     loanType: "All Loan Types",
     status: "All Status",
+    membershipType: "All Members",
   });
   const [sortOption, setSortOption] = useState<LoanSortOption>("Newest");
   const [pageSize, setPageSize] = useState(10);
@@ -104,8 +107,12 @@ export default function LoanApplicationsPage() {
         filters.loanType === "All Loan Types" || application.type === filters.loanType;
       const matchesStatus =
         filters.status === "All Status" || application.status === filters.status;
+      const matchesMembershipType =
+        filters.membershipType === "All Members" ||
+        (application.membershipType ?? null) ===
+          (filters.membershipType === "Regular Member" ? "regular" : "associate");
 
-      return matchesSearch && matchesMemberId && matchesLoanType && matchesStatus;
+      return matchesSearch && matchesMemberId && matchesLoanType && matchesStatus && matchesMembershipType;
     });
   }, [applications, filters]);
 
@@ -133,7 +140,8 @@ export default function LoanApplicationsPage() {
     filters.search.trim() !== "" ||
     filters.memberId.trim() !== "" ||
     filters.loanType !== "All Loan Types" ||
-    filters.status !== "All Status";
+    filters.status !== "All Status" ||
+    filters.membershipType !== "All Members";
 
   const applyTextFilters = () => {
     setFilters((current) => ({
@@ -151,6 +159,11 @@ export default function LoanApplicationsPage() {
 
   const updateLoanTypeFilter = (loanType: string) => {
     setFilters((current) => ({ ...current, loanType }));
+    setCurrentPage(1);
+  };
+
+  const updateMembershipTypeFilter = (membershipType: MembershipTypeFilter) => {
+    setFilters((current) => ({ ...current, membershipType }));
     setCurrentPage(1);
   };
 
@@ -175,6 +188,7 @@ export default function LoanApplicationsPage() {
         memberIdValue={memberIdInput}
         loanTypeFilter={filters.loanType}
         statusFilter={filters.status}
+        membershipTypeFilter={filters.membershipType}
         sortOption={sortOption}
         pageSize={pageSize}
         loanTypeOptions={loanTypeOptions}
@@ -183,6 +197,7 @@ export default function LoanApplicationsPage() {
         onApplyFilters={applyTextFilters}
         onLoanTypeChange={updateLoanTypeFilter}
         onStatusFilterChange={updateStatusFilter}
+        onMembershipTypeChange={updateMembershipTypeFilter}
         onSortChange={updateSortOption}
         onPageSizeChange={updatePageSize}
         onExport={exportApplications}

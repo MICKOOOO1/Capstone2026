@@ -9,21 +9,28 @@ import {
   roleFilterOptions,
   statusFilterOptions,
 } from "./MembersData";
+import {
+  MembershipTypeFilter,
+  membershipTypeFilterOptions,
+} from "@/lib/membership";
 
 interface MemberToolbarProps {
   searchValue: string;
   memberIdValue: string;
   roleFilter: MemberRoleFilter;
   statusFilter: MemberStatusFilter;
+  membershipTypeFilter: MembershipTypeFilter;
   sortOption: MemberSortOption;
   pageSize: number;
   showClear: boolean;
+  readOnly?: boolean;
   onSearchChange: (value: string) => void;
   onMemberIdChange: (value: string) => void;
   onApplyFilters: () => void;
   onClearFilters: () => void;
   onRoleFilterChange: (value: MemberRoleFilter) => void;
   onStatusFilterChange: (value: MemberStatusFilter) => void;
+  onMembershipTypeFilterChange: (value: MembershipTypeFilter) => void;
   onSortChange: (value: MemberSortOption) => void;
   onPageSizeChange: (value: number) => void;
   onAddMember: () => void;
@@ -40,15 +47,18 @@ export default function MemberToolbar({
   memberIdValue,
   roleFilter,
   statusFilter,
+  membershipTypeFilter,
   sortOption,
   pageSize,
   showClear,
+  readOnly = false,
   onSearchChange,
   onMemberIdChange,
   onApplyFilters,
   onClearFilters,
   onRoleFilterChange,
   onStatusFilterChange,
+  onMembershipTypeFilterChange,
   onSortChange,
   onPageSizeChange,
   onAddMember,
@@ -101,14 +111,16 @@ export default function MemberToolbar({
           )}
         </div>
 
-        <button
-          type="button"
-          onClick={onAddMember}
-          className={`${primaryButtonBase} gap-2.5 whitespace-nowrap px-5 xl:ml-4`}
-        >
-          <Plus className="h-4 w-4" />
-          Create Account
-        </button>
+        {!readOnly && (
+          <button
+            type="button"
+            onClick={onAddMember}
+            className={`${primaryButtonBase} gap-2.5 whitespace-nowrap px-5 xl:ml-4`}
+          >
+            <Plus className="h-4 w-4" />
+            Create Account
+          </button>
+        )}
       </div>
 
       <div className="flex flex-col gap-3 border-t border-[#E5E7EB] px-6 py-3 xl:flex-row xl:items-center xl:justify-between">
@@ -135,6 +147,22 @@ export default function MemberToolbar({
             {statusFilterOptions.map((status) => (
               <option key={status} value={status}>
                 {status}
+              </option>
+            ))}
+          </select>
+          <select
+            value={membershipTypeFilter}
+            onChange={(event) =>
+              onMembershipTypeFilterChange(
+                event.target.value as MembershipTypeFilter
+              )
+            }
+            className={`${selectBase} w-[170px]`}
+            aria-label="Filter by membership type"
+          >
+            {membershipTypeFilterOptions.map((membershipType) => (
+              <option key={membershipType} value={membershipType}>
+                {membershipType}
               </option>
             ))}
           </select>

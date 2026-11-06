@@ -11,6 +11,8 @@ class SecureStorageService {
   static const String pinVerifierKey = 'security.pin_verifier';
   static const String pinFailedAttemptsKey = 'security.pin_failed_attempts';
   static const String pinDisabledUntilKey = 'security.pin_disabled_until';
+  static const String quickAccessUserIdKey = 'security.quick_access_user_id';
+  static const String quickAccessMethodKey = 'security.quick_access_method';
 
   static const Set<String> _securityKeys = {
     biometricEnabledKey,
@@ -18,6 +20,8 @@ class SecureStorageService {
     pinVerifierKey,
     pinFailedAttemptsKey,
     pinDisabledUntilKey,
+    quickAccessUserIdKey,
+    quickAccessMethodKey,
   };
 
   static FlutterSecureStorage _createStorage() {
